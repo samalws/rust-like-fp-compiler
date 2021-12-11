@@ -6,15 +6,21 @@ import Data.Maybe
 import Test.QuickCheck
 
 data Expr = Lam Type Expr | App Expr Expr | FnVal Int [VarType] [LT] | Var Int                  deriving (Eq, Show)
-data Type = Type VarMut VarType                                                                 deriving (Eq, Show)
+data Type = Type { vm :: VarMut, vt :: VarType }                                                deriving (Eq, Show)
 data VarType = TypeVar Int | Prim String | Struct Int [VarType] [LT] | FnType Bool LT Type Type deriving (Eq, Show)
 data VarMut = Mut | Immut LT                                                                    deriving (Eq, Show)
 data LT = LTZero | LTSucc LT | LTMin LT LT | LTInf | LTVar Int                                  deriving (Eq, Show)
 
 -- TODO is there an expr env
-data TypeEnv = TypeEnv { envVars :: [Type], envFns :: [[VarType] -> [LT] -> Maybe Type] }
+data TypeEnv = TypeEnv { envVars :: [Type], envFns :: [(Int, Int, Type)] }
 pushTypeEnvVar :: Type -> TypeEnv -> TypeEnv
 pushTypeEnvVar t env = env { envVars = t:(succType <$> envVars env) }
+nthEnvFn :: Int -> [VarType] -> [LT] -> TypeEnv -> Maybe Type
+nthEnvFn n vs ls env = do
+  (vvs, lls, t) <- envFns env `atMay` n
+  guard $ length vs == vvs
+  guard $ length ls == lls
+  replaceType vs ls t
 
 instance Arbitrary Expr where
   arbitrary = oneof [
@@ -51,7 +57,7 @@ instance Arbitrary LT where
     ]
 
 instance Arbitrary TypeEnv where
-  arbitrary = (flip TypeEnv []) <$> arbitrary -- TODO
+  arbitrary = TypeEnv <$> arbitrary <*> arbitrary
 
 instance Show TypeEnv where
   show (TypeEnv a b) = "TypeEnv " <> show a <> " []" -- TODO
@@ -174,8 +180,51 @@ checkType env (App a b) = do
   where
     assertFnType (Type _ (FnType _ _ a b)) = pure (a, b)
     assertFnType _ = empty
-checkType env (FnVal n vs ls) = ((envFns env) `atMay` n) >>= (($ ls) . ($ vs))
+checkType env (FnVal n vs ls) = nthEnvFn n vs ls env
 checkType env (Var n) = (envVars env) `atMay` n
+
+replaceType :: [VarType] -> [LT] -> Type -> Maybe Type
+replaceType = const $ const pure
+-- TODO I'm a brainlet right now
+
+validEnv :: TypeEnv -> Bool
+validEnv env = and (typeValidWithEnvFns (envFns env) <$> envVars env) && and (envFnValid <$> envFns env)
+
+envFnValid :: (Int, Int, Type) -> Bool
+envFnValid (v,l,t) = noTypeVarsAbove (v-1) (vt t) && noLTVarsAboveType l t
+
+{-
+data Type = Type { vm :: VarMut, vt :: VarType }                                                deriving (Eq, Show)
+data VarType = TypeVar Int | Prim String | Struct Int [VarType] [LT] | FnType Bool LT Type Type deriving (Eq, Show)
+data VarMut = Mut | Immut LT                                                                    deriving (Eq, Show)
+data LT = LTZero | LTSucc LT | LTMin LT LT | LTInf | LTVar Int                                  deriving (Eq, Show)
+-}
+
+noTypeVarsAbove :: Int -> VarType -> Bool
+noTypeVarsAbove n (TypeVar m) = m <= n
+noTypeVarsAbove n (Struct _ l _) = and $ noTypeVarsAbove n <$> l
+noTypeVarsAbove n (FnType _ _ a b) = noTypeVarsAbove n (vt a) && noTypeVarsAbove n (vt b)
+noTypeVarsAbove _ _ = True
+
+noLTVarsAboveType :: Int -> Type -> Bool
+noLTVarsAboveType n t = noLTVarsAboveVarMut n (vm t) && noLTVarsAboveVarType n (vt t)
+
+noLTVarsAboveVarType :: Int -> VarType -> Bool
+noLTVarsAboveVarType n (Struct _ vs ls) = and (noLTVarsAboveVarType n <$> vs) && and (noLTVarsAboveLT n <$> ls)
+
+noLTVarsAboveVarMut :: Int -> VarMut -> Bool
+noLTVarsAboveVarMut n Mut = True
+noLTVarsAboveVarMut n (Immut l) = noLTVarsAboveLT n l
+
+noLTVarsAboveLT :: Int -> LT -> Bool
+noLTVarsAboveLT n (LTSucc a) = noLTVarsAboveLT n a
+noLTVarsAboveLT n (LTMin a b) = noLTVarsAboveLT n a && noLTVarsAboveLT n b
+noLTVarsAboveLT n (LTVar m) = m <= n
+noLTVarsAboveLT _ _ = True
+
+typeValidWithEnvFns :: [(Int, Int, Type)] -> Type -> Bool
+typeValidWithEnvFns = const $ const True
+-- TODO I'm a brainlet right now
 
 callExpr :: Int -> Expr -> Expr -> Maybe Expr
 callExpr n (Lam t a) b = Lam <$> (decType t) <*> (callExpr (n+1) a (succExpr b))
@@ -201,13 +250,13 @@ betaReduceInsideLam (Lam t a) = Lam t <$> betaReduceInsideLam a
 betaReduceInsideLam a = betaReduce a
 
 -- can't make type for this ugly term
-toCheck1 t = isNothing $ checkType (TypeEnv [] []) (Lam t (App (Var 0) (Var 0)))
+toCheck1 (env,t) = not (validEnv env) || isNothing (checkType env (Lam t (App (Var 0) (Var 0))))
 -- preservation
-toCheck2 (env,expr) = isNothing (checkType env expr) || ((betaReduce expr >>= checkType env) == checkType env expr)
+toCheck2 (env,expr) = not (validEnv env) || isNothing (checkType env expr) || ((betaReduce expr >>= checkType env) == checkType env expr)
 -- preservation for betaReduceInsideLam
-toCheck3 (env,expr) = isNothing (checkType env expr) || ((betaReduceInsideLam expr >>= checkType env) == checkType env expr)
+toCheck3 (env,expr) = not (validEnv env) || isNothing (checkType env expr) || ((betaReduceInsideLam expr >>= checkType env) == checkType env expr)
 -- progress
-toCheck4 (env,expr) = isNothing (checkType env expr) || inNormalForm expr || (betaReduce expr /= pure expr)
+toCheck4 (env,expr) = not (validEnv env) || isNothing (checkType env expr) || inNormalForm expr || (betaReduce expr /= pure expr)
 -- can make well typed terms (should fail)
 toCheck5 (env,expr) = isNothing (checkType env expr)
 

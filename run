@@ -1,0 +1,3 @@
+./build
+./thing
+rm thing
