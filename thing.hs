@@ -183,9 +183,25 @@ checkType env (App a b) = do
 checkType env (FnVal n vs ls) = nthEnvFn n vs ls env
 checkType env (Var n) = (envVars env) `atMay` n
 
+-- called by nthEnvFn, replaces template and lifetime variables
 replaceType :: [VarType] -> [LT] -> Type -> Maybe Type
-replaceType = const $ const pure
--- TODO I'm a brainlet right now
+replaceType vs ls (Type m t) = Type <$> replaceVarMut ls m <*> replaceVarType vs ls t
+
+replaceVarType :: [VarType] -> [LT] -> VarType -> Maybe VarType
+replaceVarType vs ls (TypeVar n) = vs `atMay` n
+replaceVarType vs ls (Struct n vvs lls) = Struct n <$> (sequence $ replaceVarType vs ls <$> vvs) <*> (sequence $ replaceLT ls <$> lls)
+replaceVarType vs ls (FnType o l a b) = FnType o <$> (replaceLT ls l) <*> (replaceType vs ls a) <*> (replaceType vs ls b)
+replaceVarType vs ls a = pure a
+
+replaceVarMut :: [LT] -> VarMut -> Maybe VarMut
+replaceVarMut ls Mut = pure Mut
+replaceVarMut ls (Immut l) = Immut <$> replaceLT ls l
+
+replaceLT :: [LT] -> LT -> Maybe LT
+replaceLT ls (LTSucc l) = LTSucc <$> replaceLT ls l
+replaceLT ls (LTMin a b) = LTMin <$> replaceLT ls a <*> replaceLT ls b
+replaceLT ls (LTVar n) = ls `atMay` n
+replaceLT ls a = pure a
 
 validEnv :: TypeEnv -> Bool
 validEnv env = and (typeValidWithEnvFns (envFns env) <$> envVars env) && and (envFnValid <$> envFns env)
