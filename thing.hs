@@ -12,9 +12,9 @@ data VarMut = Mut | Immut LT                                                    
 data LT = LTZero | LTSucc LT | LTMin LT LT | LTInf | LTVar Int                                  deriving (Eq, Show)
 
 -- used in typechecking to determine the types of vars and fnvals
-data Env = Env { envVars :: [Type], envFns :: [(Int, Int, Type)] }
-blankEnv :: [(Int, Int, Type)] -> Env
-blankEnv = Env []
+data Env = Env { envVars :: [Type], envFns :: [(Int, Int, Type)], envStructs :: [(Int, Int)], maxTypeVar :: Int, maxLTVar :: Int } deriving (Eq, Show)
+blankEnv :: ([(Int, Int, Type)], [(Int, Int)], Int, Int) -> Env
+blankEnv (a,b,c,d) = Env [] a b c d
 pushEnvVar :: Type -> Env -> Env
 pushEnvVar t env = env { envVars = t:(succType <$> envVars env) }
 nthEnvFn :: Int -> [VarType] -> [LT] -> Env -> Maybe Type
@@ -59,10 +59,7 @@ instance Arbitrary LT where
     ]
 
 instance Arbitrary Env where
-  arbitrary = Env <$> arbitrary <*> arbitrary
-
-instance Show Env where
-  show (Env a b) = "Env " <> show a <> " []" -- TODO
+  arbitrary = Env <$> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary
 
 typeIsMut :: Type -> Bool
 typeIsMut (Type m _) = isMut m
@@ -166,15 +163,15 @@ minFreeLT n env (Var m)
   | otherwise = typeLT $ (envVars env) !! (m - n)
 minFreeLT n env (FnVal _ _ _) = LTInf
 
-checkType :: Env -> Expr -> Maybe Type
-checkType env (Lam t0 a) = checkType newEnv a >>= f where
+typeof :: Env -> Expr -> Maybe Type
+typeof env (Lam t0 a) = guard (checkType env $ vt t0) >> typeof newEnv a >>= f where
   f ta = pure $ Type Mut $ FnType once minLT t0 (succType ta)
   newEnv = pushEnvVar t0 env
   once = S.null (freeMuts 1 env a)
   minLT = minFreeLT 1 env a
-checkType env (App a b) = do
-  ta <- checkType env a
-  tb <- checkType env b
+typeof env (App a b) = do
+  ta <- typeof env a
+  tb <- typeof env b
   (ttb, tc) <- assertFnType ta
   guard $ S.null $ (freeMuts 0 env a) `S.intersection` (freeMuts 0 env b)
   guard $ tb == ttb
@@ -182,8 +179,19 @@ checkType env (App a b) = do
   where
     assertFnType (Type _ (FnType _ _ a b)) = pure (a, b)
     assertFnType _ = empty
-checkType env (FnVal n vs ls) = nthEnvFn n vs ls env
-checkType env (Var n) = (envVars env) `atMay` n
+typeof env (FnVal n vs ls) = guard (and $ checkType env <$> vs) >> nthEnvFn n vs ls env
+typeof env (Var n) = (envVars env) `atMay` n
+
+checkType :: Env -> VarType -> Bool
+checkType env t = noInvalidStructsVarType (envStructs env) t && noTypeVarsAbove (maxTypeVar env) t && noLTVarsAboveVarType (maxLTVar env) t
+
+noInvalidStructsType :: [(Int, Int)] -> Type -> Bool
+noInvalidStructsType s (Type _ vt) = noInvalidStructsVarType s vt
+
+noInvalidStructsVarType :: [(Int, Int)] -> VarType -> Bool
+noInvalidStructsVarType s (Struct n vs ls) = n >= 0 && n < length s && length vs == fst (s !! n) && length ls == snd (s !! n) && and (noInvalidStructsVarType s <$> vs)
+noInvalidStructsVarType s (FnType _ _ a b) = noInvalidStructsType s a && noInvalidStructsType s b
+noInvalidStructsVarType _ _ = True
 
 -- called by nthEnvFn, replaces template and lifetime variables
 replaceType :: [VarType] -> [LT] -> Type -> Maybe Type
@@ -206,17 +214,13 @@ replaceLT ls (LTVar n) = ls `atMay` n
 replaceLT ls a = pure a
 
 validEnv :: Env -> Bool
-validEnv env = and (envFnValid <$> envFns env)
+validEnv env = and (envFnValid (envStructs env) <$> envFns env) && and (envStructValid <$> envStructs env) && maxTypeVar env >= 0 && maxLTVar env >= 0
 
-envFnValid :: (Int, Int, Type) -> Bool
-envFnValid (v,l,t) = noTypeVarsAbove (v-1) (vt t) && noLTVarsAboveType l t
+envFnValid :: [(Int, Int)] -> (Int, Int, Type) -> Bool
+envFnValid s (v,l,t) = noInvalidStructsType s t && noTypeVarsAbove (v-1) (vt t) && noLTVarsAboveType l t && v >= 0 && l >= 0
 
-{-
-data Type = Type { vm :: VarMut, vt :: VarType }                                                deriving (Eq, Show)
-data VarType = TypeVar Int | Prim String | Struct Int [VarType] [LT] | FnType Bool LT Type Type deriving (Eq, Show)
-data VarMut = Mut | Immut LT                                                                    deriving (Eq, Show)
-data LT = LTZero | LTSucc LT | LTMin LT LT | LTInf | LTVar Int                                  deriving (Eq, Show)
--}
+envStructValid :: (Int, Int) -> Bool
+envStructValid (v, l) = v >= 0 && l >= 0
 
 noTypeVarsAbove :: Int -> VarType -> Bool
 noTypeVarsAbove n (TypeVar m) = m <= n
@@ -262,22 +266,24 @@ inNormalForm (App a@(App _ _) _) = inNormalForm a
 inNormalForm _ = True
 
 -- can't make type for this ugly term
-toCheck1 (env,t) = let e = blankEnv env in not (validEnv e) || isNothing (checkType e (Lam t (App (Var 0) (Var 0))))
+toCheck1 (env,t) = let e = blankEnv env in not (validEnv e) || isNothing (typeof e (Lam t (App (Var 0) (Var 0))))
 -- preservation
-toCheck2 (env,expr) = let e = blankEnv env in not (validEnv e) || isNothing (checkType e expr) || ((betaReduce expr >>= checkType e) == checkType e expr)
+toCheck2 (env,expr) = let e = blankEnv env in not (validEnv e) || isNothing (typeof e expr) || ((betaReduce expr >>= typeof e) == typeof e expr)
 -- progress
-toCheck3 (env,expr) = let e = blankEnv env in not (validEnv e) || isNothing (checkType e expr) || inNormalForm expr || (betaReduce expr /= pure expr)
+toCheck3 (env,expr) = let e = blankEnv env in not (validEnv e) || isNothing (typeof e expr) || inNormalForm expr || (betaReduce expr /= pure expr)
 -- can make well typed terms (should fail)
-toCheck4 (env,expr) = let e = blankEnv env in isNothing (checkType e expr)
+toCheck4 (env,expr) = let e = blankEnv env in isNothing (typeof e expr)
 -- can make non well typed terms (should fail)
-toCheck5 (env,expr) = let e = blankEnv env in isJust (checkType e expr)
+toCheck5 (env,expr) = let e = blankEnv env in isJust (typeof e expr)
 
 main = do
-  -- TODO if I make it 6, it gets stuck sometimes
-  quickCheckWith stdArgs{maxSize = 5, maxSuccess = 100000} toCheck1
-  quickCheckWith stdArgs{maxSize = 5, maxSuccess = 100000} toCheck2
-  quickCheckWith stdArgs{maxSize = 5, maxSuccess = 100000} toCheck3
-  putStrLn "next one should fail"
-  quickCheckWith stdArgs{maxSize = 1, maxSuccess = 100000} toCheck4
-  putStrLn "next one should fail"
-  quickCheckWith stdArgs{maxSize = 1, maxSuccess = 100000} toCheck5
+  putStrLn "testing unable to type \\a: T. a a"
+  quickCheckWith stdArgs{maxSize = 5, maxSuccess = 1000000} toCheck1
+  putStrLn "testing preservation"
+  quickCheckWith stdArgs{maxSize = 5, maxSuccess = 1000000} toCheck2
+  putStrLn "testing progress"
+  quickCheckWith stdArgs{maxSize = 5, maxSuccess = 1000000} toCheck3
+  putStrLn "testing able to make well typed term (should fail)"
+  quickCheckWith stdArgs{maxSize = 1, maxSuccess = 1000000} toCheck4
+  putStrLn "testing able to make badly typed term (should fail)"
+  quickCheckWith stdArgs{maxSize = 1, maxSuccess = 1000000} toCheck5
