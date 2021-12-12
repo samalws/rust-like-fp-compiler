@@ -13,9 +13,8 @@ data Type = Type { vm :: VarMut, vt :: VarType }                                
 data VarType = TypeVar Int | Prim String | Struct Int [VarType] [LT] | FnType Bool LT Type Type deriving (Eq, Show) -- the bool in FnType means whether it's once or not
 data VarMut = Mut | Immut LT                                                                    deriving (Eq, Show)
 data LT = LTZero | LTSucc LT | LTMin LT LT | LTInf | LTVar Int                                  deriving (Eq, Show) -- LTZero means 'here, LTSucc means one level up, LTInf means 'static
-
--- used in typeof to determine the types of vars and fnvals
-data Env = Env { envVars :: [Type], envFns :: [(Int, Int, Type)], envStructs :: [(Int, Int)], maxTypeVar :: Int, maxLTVar :: Int } deriving (Eq, Show)
+data Code = Code { codeFns :: [(Int, Int, Expr)], codeStructs :: [(Int, Int)] }                 deriving (Eq, Show) -- codeFns and codeStructs ints are type and LT template vars; codeStructs really need more info
+data Env = Env { envVars :: [Type], envFns :: [(Int, Int, Type)], envStructs :: [(Int, Int)], maxTypeVar :: Int, maxLTVar :: Int } deriving (Eq, Show) -- used in typeof to determine the types of vars and fnvals
 
 -- envVars should always be empty to start with since we don't start out inside a lambda
 blankEnv :: ([(Int, Int, Type)], [(Int, Int)], Int, Int) -> Env
@@ -258,6 +257,19 @@ inNormalForm (App (Lam _ _) _) = False
 inNormalForm (App a@(App _ _) _) = inNormalForm a
 inNormalForm _ = True
 
+-- TODO a lot of mutually recursive stuff going on here
+-- TODO quickcheck this stuff
+
+codeToTypes :: Code -> Maybe [Type]
+codeToTypes code = codeToEnvs code >>= (\envs -> sequence $ zipWith typeof envs ((\(_,_,e) -> e) <$> codeFns code))
+
+codeToEnvs :: Code -> Maybe [Env]
+codeToEnvs code = makeEnvs <$> codeToTypes code where
+  makeEnvs types = zipWith (makeEnv $ globalEnv types) (codeFns code) types
+  makeEnv ge (v,l,_) t = ge { maxTypeVar = v, maxLTVar = l }
+  globalEnv types = blankEnv (zipWith envFnsEntry (codeFns code) types, codeStructs code, 0, 0)
+  envFnsEntry (v,l,_) t = (v,l,t)
+
 -- Arbitrary instances for quickchecking
 instance Arbitrary Expr where
   arbitrary = oneof [
@@ -292,6 +304,9 @@ instance Arbitrary LT where
       pure LTInf,
       LTVar <$> arbitrary
     ]
+
+instance Arbitrary Code where
+  arbitrary = Code <$> arbitrary <*> arbitrary
 
 instance Arbitrary Env where
   arbitrary = Env <$> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary
