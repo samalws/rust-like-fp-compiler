@@ -5,11 +5,14 @@ import Control.Applicative
 import Data.Maybe
 import Test.QuickCheck
 
+-- uses de bruijn indexing for term-level variables and type-level LTs
+-- uses named variables (named with ints rather than strings) for type and LT template vars, also for fns and structs
+-- "LT" means lifetime
 data Expr = Lam Type Expr | App Expr Expr | FnVal Int [VarType] [LT] | Var Int                  deriving (Eq, Show)
 data Type = Type { vm :: VarMut, vt :: VarType }                                                deriving (Eq, Show)
-data VarType = TypeVar Int | Prim String | Struct Int [VarType] [LT] | FnType Bool LT Type Type deriving (Eq, Show)
+data VarType = TypeVar Int | Prim String | Struct Int [VarType] [LT] | FnType Bool LT Type Type deriving (Eq, Show) -- the bool in FnType means whether it's once or not
 data VarMut = Mut | Immut LT                                                                    deriving (Eq, Show)
-data LT = LTZero | LTSucc LT | LTMin LT LT | LTInf | LTVar Int                                  deriving (Eq, Show)
+data LT = LTZero | LTSucc LT | LTMin LT LT | LTInf | LTVar Int                                  deriving (Eq, Show) -- LTZero means 'here, LTSucc means one level up, LTInf means 'static
 
 -- used in typeof to determine the types of vars and fnvals
 data Env = Env { envVars :: [Type], envFns :: [(Int, Int, Type)], envStructs :: [(Int, Int)], maxTypeVar :: Int, maxLTVar :: Int } deriving (Eq, Show)
