@@ -1,1 +1,1 @@
-ghc -no-keep-hi-files -no-keep-o-files thing.hs
+ghc -O3 -no-keep-hi-files -no-keep-o-files thing.hs

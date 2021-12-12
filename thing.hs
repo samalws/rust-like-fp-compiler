@@ -11,11 +11,13 @@ data VarType = TypeVar Int | Prim String | Struct Int [VarType] [LT] | FnType Bo
 data VarMut = Mut | Immut LT                                                                    deriving (Eq, Show)
 data LT = LTZero | LTSucc LT | LTMin LT LT | LTInf | LTVar Int                                  deriving (Eq, Show)
 
--- TODO is there an expr env
-data TypeEnv = TypeEnv { envVars :: [Type], envFns :: [(Int, Int, Type)] }
-pushTypeEnvVar :: Type -> TypeEnv -> TypeEnv
-pushTypeEnvVar t env = env { envVars = t:(succType <$> envVars env) }
-nthEnvFn :: Int -> [VarType] -> [LT] -> TypeEnv -> Maybe Type
+-- used in typechecking to determine the types of vars and fnvals
+data Env = Env { envVars :: [Type], envFns :: [(Int, Int, Type)] }
+blankEnv :: [(Int, Int, Type)] -> Env
+blankEnv = Env []
+pushEnvVar :: Type -> Env -> Env
+pushEnvVar t env = env { envVars = t:(succType <$> envVars env) }
+nthEnvFn :: Int -> [VarType] -> [LT] -> Env -> Maybe Type
 nthEnvFn n vs ls env = do
   (vvs, lls, t) <- envFns env `atMay` n
   guard $ length vs == vvs
@@ -56,11 +58,11 @@ instance Arbitrary LT where
       LTVar <$> arbitrary
     ]
 
-instance Arbitrary TypeEnv where
-  arbitrary = TypeEnv <$> arbitrary <*> arbitrary
+instance Arbitrary Env where
+  arbitrary = Env <$> arbitrary <*> arbitrary
 
-instance Show TypeEnv where
-  show (TypeEnv a b) = "TypeEnv " <> show a <> " []" -- TODO
+instance Show Env where
+  show (Env a b) = "Env " <> show a <> " []" -- TODO
 
 typeIsMut :: Type -> Bool
 typeIsMut (Type m _) = isMut m
@@ -147,7 +149,7 @@ decLT LTInf = pure LTInf
 decLT (LTSucc l) = pure l
 decLT _ = empty
 
-freeMuts :: Int -> TypeEnv -> Expr -> S.Set Int
+freeMuts :: Int -> Env -> Expr -> S.Set Int
 freeMuts n env (Lam _ a) = subtract 1 `S.map` freeMuts (n+1) env a
 freeMuts n env (App a b) = (freeMuts n env a) `S.union` (freeMuts n env b)
 freeMuts n env (Var m)
@@ -156,7 +158,7 @@ freeMuts n env (Var m)
   | otherwise = S.empty
 freeMuts n env (FnVal _ _ _) = S.empty
 
-minFreeLT :: Int -> TypeEnv -> Expr -> LT
+minFreeLT :: Int -> Env -> Expr -> LT
 minFreeLT n env (Lam t a) = succLT $ minFreeLT (n+1) env a
 minFreeLT n env (App a b) = minLT (minFreeLT n env a) (minFreeLT n env a)
 minFreeLT n env (Var m)
@@ -164,10 +166,10 @@ minFreeLT n env (Var m)
   | otherwise = typeLT $ (envVars env) !! (m - n)
 minFreeLT n env (FnVal _ _ _) = LTInf
 
-checkType :: TypeEnv -> Expr -> Maybe Type
-checkType env (Lam t0 a) = checkType newTypeEnv a >>= f where
+checkType :: Env -> Expr -> Maybe Type
+checkType env (Lam t0 a) = checkType newEnv a >>= f where
   f ta = pure $ Type Mut $ FnType once minLT t0 (succType ta)
-  newTypeEnv = pushTypeEnvVar t0 env
+  newEnv = pushEnvVar t0 env
   once = S.null (freeMuts 1 env a)
   minLT = minFreeLT 1 env a
 checkType env (App a b) = do
@@ -203,8 +205,8 @@ replaceLT ls (LTMin a b) = LTMin <$> replaceLT ls a <*> replaceLT ls b
 replaceLT ls (LTVar n) = ls `atMay` n
 replaceLT ls a = pure a
 
-validEnv :: TypeEnv -> Bool
-validEnv env = and (typeValidWithEnvFns (envFns env) <$> envVars env) && and (envFnValid <$> envFns env)
+validEnv :: Env -> Bool
+validEnv env = and (envFnValid <$> envFns env)
 
 envFnValid :: (Int, Int, Type) -> Bool
 envFnValid (v,l,t) = noTypeVarsAbove (v-1) (vt t) && noLTVarsAboveType l t
@@ -227,6 +229,8 @@ noLTVarsAboveType n t = noLTVarsAboveVarMut n (vm t) && noLTVarsAboveVarType n (
 
 noLTVarsAboveVarType :: Int -> VarType -> Bool
 noLTVarsAboveVarType n (Struct _ vs ls) = and (noLTVarsAboveVarType n <$> vs) && and (noLTVarsAboveLT n <$> ls)
+noLTVarsAboveVarType n (FnType _ l a b) = noLTVarsAboveLT n l && noLTVarsAboveType n a && noLTVarsAboveType n b
+noLTVarsAboveVarType _ _ = True
 
 noLTVarsAboveVarMut :: Int -> VarMut -> Bool
 noLTVarsAboveVarMut n Mut = True
@@ -237,10 +241,6 @@ noLTVarsAboveLT n (LTSucc a) = noLTVarsAboveLT n a
 noLTVarsAboveLT n (LTMin a b) = noLTVarsAboveLT n a && noLTVarsAboveLT n b
 noLTVarsAboveLT n (LTVar m) = m <= n
 noLTVarsAboveLT _ _ = True
-
-typeValidWithEnvFns :: [(Int, Int, Type)] -> Type -> Bool
-typeValidWithEnvFns = const $ const True
--- TODO I'm a brainlet right now
 
 callExpr :: Int -> Expr -> Expr -> Maybe Expr
 callExpr n (Lam t a) b = Lam <$> (decType t) <*> (callExpr (n+1) a (succExpr b))
@@ -261,19 +261,23 @@ inNormalForm (App (Lam _ _) _) = False
 inNormalForm (App a@(App _ _) _) = inNormalForm a
 inNormalForm _ = True
 
-betaReduceInsideLam :: Expr -> Maybe Expr
-betaReduceInsideLam (Lam t a) = Lam t <$> betaReduceInsideLam a
-betaReduceInsideLam a = betaReduce a
-
 -- can't make type for this ugly term
-toCheck1 (env,t) = not (validEnv env) || isNothing (checkType env (Lam t (App (Var 0) (Var 0))))
+toCheck1 (env,t) = let e = blankEnv env in not (validEnv e) || isNothing (checkType e (Lam t (App (Var 0) (Var 0))))
 -- preservation
-toCheck2 (env,expr) = not (validEnv env) || isNothing (checkType env expr) || ((betaReduce expr >>= checkType env) == checkType env expr)
--- preservation for betaReduceInsideLam
-toCheck3 (env,expr) = not (validEnv env) || isNothing (checkType env expr) || ((betaReduceInsideLam expr >>= checkType env) == checkType env expr)
+toCheck2 (env,expr) = let e = blankEnv env in not (validEnv e) || isNothing (checkType e expr) || ((betaReduce expr >>= checkType e) == checkType e expr)
 -- progress
-toCheck4 (env,expr) = not (validEnv env) || isNothing (checkType env expr) || inNormalForm expr || (betaReduce expr /= pure expr)
+toCheck3 (env,expr) = let e = blankEnv env in not (validEnv e) || isNothing (checkType e expr) || inNormalForm expr || (betaReduce expr /= pure expr)
 -- can make well typed terms (should fail)
-toCheck5 (env,expr) = isNothing (checkType env expr)
+toCheck4 (env,expr) = let e = blankEnv env in isNothing (checkType e expr)
+-- can make non well typed terms (should fail)
+toCheck5 (env,expr) = let e = blankEnv env in isJust (checkType e expr)
 
-main = pure ()
+main = do
+  -- TODO if I make it 6, it gets stuck sometimes
+  quickCheckWith stdArgs{maxSize = 5, maxSuccess = 100000} toCheck1
+  quickCheckWith stdArgs{maxSize = 5, maxSuccess = 100000} toCheck2
+  quickCheckWith stdArgs{maxSize = 5, maxSuccess = 100000} toCheck3
+  putStrLn "next one should fail"
+  quickCheckWith stdArgs{maxSize = 1, maxSuccess = 100000} toCheck4
+  putStrLn "next one should fail"
+  quickCheckWith stdArgs{maxSize = 1, maxSuccess = 100000} toCheck5
