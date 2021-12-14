@@ -13,7 +13,7 @@ data Type = Type { vm :: VarMut, vt :: VarType }                                
 data VarType = TypeVar Int | Prim String | Struct Int [VarType] [LT] | FnType Bool LT Type Type deriving (Eq, Show) -- the bool in FnType means whether it's once or not
 data VarMut = Mut | Immut LT                                                                    deriving (Eq, Show)
 data LT = LTZero | LTSucc LT | LTMin LT LT | LTInf | LTVar Int                                  deriving (Eq, Show) -- LTZero means 'here, LTSucc means one level up, LTInf means 'static
-data Code = Code { codeFns :: [(Int, Int, Expr)], codeStructs :: [(Int, Int)] }                 deriving (Eq, Show) -- codeFns and codeStructs ints are type and LT template vars; codeStructs really need more info
+data Code = Code { codeFns :: [(Int, Int, Expr, Type)], codeStructs :: [(Int, Int)] }           deriving (Eq, Show) -- codeFns and codeStructs ints are type and LT template vars; codeStructs really need more info
 data Env = Env { envVars :: [Type], envFns :: [(Int, Int, Type)], envStructs :: [(Int, Int)], maxTypeVar :: Int, maxLTVar :: Int } deriving (Eq, Show) -- used in typeof to determine the types of vars and fnvals
 
 -- envVars should always be empty to start with since we don't start out inside a lambda
@@ -143,9 +143,9 @@ minFreeLT n env (FnVal _ _ _) = LTInf
 -- type of an expression, or nothing if it's not well-typed
 typeof :: Env -> Expr -> Maybe Type
 typeof env (Lam t0 a) = guard (checkType env $ vt t0) >> typeof newEnv a >>= f where
-  f ta = pure $ Type Mut $ FnType once minLT t0 (succType ta)
+  f ta = pure $ Type Mut $ FnType once minLT t0 ta
   newEnv = pushEnvVar t0 env
-  once = S.null (freeMuts 1 env a)
+  once = not $ S.null (freeMuts 1 env a)
   minLT = minFreeLT 1 env a
 typeof env (App a b) = do
   ta <- typeof env a
@@ -257,18 +257,17 @@ inNormalForm (App (Lam _ _) _) = False
 inNormalForm (App a@(App _ _) _) = inNormalForm a
 inNormalForm _ = True
 
--- TODO a lot of mutually recursive stuff going on here
--- TODO quickcheck this stuff
+checkCodeTypes :: Code -> Bool
+checkCodeTypes code = and $ uncurry checkElem <$> codeToEnvs code `zip` codeFns code where
+  checkElem env (_, _, e, t) = pure t == (typeof env e >>= modifyType)
+  modifyType (Type _ t) = pure $ Type (Immut LTInf) t
 
-codeToTypes :: Code -> Maybe [Type]
-codeToTypes code = codeToEnvs code >>= (\envs -> sequence $ zipWith typeof envs ((\(_,_,e) -> e) <$> codeFns code))
-
-codeToEnvs :: Code -> Maybe [Env]
-codeToEnvs code = makeEnvs <$> codeToTypes code where
-  makeEnvs types = zipWith (makeEnv $ globalEnv types) (codeFns code) types
-  makeEnv ge (v,l,_) t = ge { maxTypeVar = v, maxLTVar = l }
-  globalEnv types = blankEnv (zipWith envFnsEntry (codeFns code) types, codeStructs code, 0, 0)
-  envFnsEntry (v,l,_) t = (v,l,t)
+codeToEnvs :: Code -> [Env]
+codeToEnvs code = makeEnv <$> codeFns code where
+  makeEnv (v,l,_,_) = generalEnv { maxTypeVar = v, maxLTVar = l }
+  generalEnv = blankEnv (allTypes, codeStructs code, 0, 0)
+  allTypes = makeTypeEntry <$> codeFns code
+  makeTypeEntry (v,l,_,t) = (v,l,t)
 
 -- Arbitrary instances for quickchecking
 instance Arbitrary Expr where
@@ -324,7 +323,17 @@ toCheck4 (env,expr) = let e = blankEnv env in isNothing (typeof e expr)
 -- can make non well typed terms (should fail)
 toCheck5 (env,expr) = let e = blankEnv env in isJust (typeof e expr)
 
+exampleCode :: Code
+exampleCode = Code { codeFns = fns, codeStructs = structs } where
+  fns = [
+      (1,1,Lam (Type (Immut (LTVar 0)) (TypeVar 0)) (Var 0),Type (Immut LTInf) (FnType False LTInf (Type (Immut (LTVar 0)) (TypeVar 0)) (Type (Immut (LTVar 0)) (TypeVar 0)))),
+      (0,0,FnVal 0 [Prim "int"] [LTInf], Type (Immut LTInf) (FnType False LTInf (Type (Immut LTInf) (Prim "int")) (Type (Immut LTInf) (Prim "int"))))
+    ]
+  structs = []
+
 main = do
+  putStrLn "Type check on example code (should be True):"
+  print $ checkCodeTypes exampleCode
   putStrLn "testing unable to type \\a: T. a a"
   quickCheckWith stdArgs{maxSize = 5, maxSuccess = 1000000} toCheck1
   putStrLn "testing preservation"

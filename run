@@ -1,3 +1,1 @@
-./build
-./thing
-rm thing
+./build && ./thing && rm thing
