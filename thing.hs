@@ -8,13 +8,13 @@ import Test.QuickCheck
 -- uses de bruijn indexing for term-level variables and type-level LTs
 -- uses named variables (named with ints rather than strings) for type and LT template vars, also for fns and structs
 -- "LT" means lifetime
-data Expr = Lam Type Expr | App Expr Expr | FnVal Int [VarType] [LT] | Var Int                  deriving (Eq, Show)
+data Expr = Lam Type Expr | App Expr Expr | FnVal Int [VarType] [LT] | Var Int | PrimVal String Type deriving (Eq, Show)
 data Type = Type { vm :: VarMut, vt :: VarType }                                                deriving (Eq, Show)
 data VarType = TypeVar Int | Prim String | Struct Int [VarType] [LT] | FnType Bool LT Type Type deriving (Eq, Show) -- the bool in FnType means whether it's once or not
 data VarMut = Mut | Immut LT                                                                    deriving (Eq, Show)
 data LT = LTZero | LTSucc LT | LTMin LT LT | LTInf | LTVar Int                                  deriving (Eq, Show) -- LTZero means 'here, LTSucc means one level up, LTInf means 'static
 data Code = Code { codeFns :: [(Int, Int, Expr, Type)], codeStructs :: [(Int, Int)] }           deriving (Eq, Show) -- codeFns and codeStructs ints are type and LT template vars; codeStructs really need more info
-data Env = Env { envVars :: [Type], envFns :: [(Int, Int, Type)], envStructs :: [(Int, Int)], maxTypeVar :: Int, maxLTVar :: Int } deriving (Eq, Show) -- used in typeof to determine the types of vars and fnvals
+data Env = Env { envVars :: [Type], envFns :: [(Int, Int, Type)], envStructs :: [(Int, Int)], limTypeVar :: Int, limLTVar :: Int } deriving (Eq, Show) -- used in typeof to determine the types of vars and fnvals
 
 -- envVars should always be empty to start with since we don't start out inside a lambda
 blankEnv :: ([(Int, Int, Type)], [(Int, Int)], Int, Int) -> Env
@@ -85,6 +85,7 @@ succExpr :: Expr -> Expr
 succExpr (Lam t a) = Lam (succType t) (succExpr a)
 succExpr (App a b) = App (succExpr a) (succExpr b)
 succExpr (Var a) = Var (a+1)
+succExpr (PrimVal a t) = PrimVal a (succType t)
 succExpr a = a
 
 -- decs lifetimes, fails if there is an LTZero or an unsucced LTVar
@@ -142,7 +143,7 @@ minFreeLT n env (FnVal _ _ _) = LTInf
 
 -- type of an expression, or nothing if it's not well-typed
 typeof :: Env -> Expr -> Maybe Type
-typeof env (Lam t0 a) = guard (checkType env $ vt t0) >> typeof newEnv a >>= f where
+typeof env (Lam t0 a) = guard (checkType env t0) >> typeof newEnv a >>= f where
   f ta = pure $ Type Mut $ FnType once minLT t0 ta
   newEnv = pushEnvVar t0 env
   once = not $ S.null (freeMuts 1 env a)
@@ -157,13 +158,17 @@ typeof env (App a b) = do
   where
     assertFnType (Type _ (FnType _ _ a b)) = pure (a, b)
     assertFnType _ = empty
-typeof env (FnVal n vs ls) = guard (and $ checkType env <$> vs) >> nthEnvFn n vs ls env
+typeof env (FnVal n vs ls) = guard (and $ checkVarType env <$> vs) >> nthEnvFn n vs ls env
 typeof env (Var n) = (envVars env) `atMay` n
+typeof env (PrimVal _ t) = pure t
 
 -- make sure a type is valid in a given environment
 -- used in typeof
-checkType :: Env -> VarType -> Bool
-checkType env t = noInvalidStructsVarType (envStructs env) t && noTypeVarsAbove (maxTypeVar env) t && noLTVarsAboveVarType (maxLTVar env) t
+checkType :: Env -> Type -> Bool
+checkType env t = noInvalidStructsVarType (envStructs env) (vt t) && noTypeVarsGeq (limTypeVar env) (vt t) && noLTVarsGeqType (limLTVar env) t
+
+checkVarType :: Env -> VarType -> Bool
+checkVarType env t = noInvalidStructsVarType (envStructs env) t && noTypeVarsGeq (limTypeVar env) t && noLTVarsGeqVarType (limLTVar env) t
 
 -- make sure all structs have the right number of template arguments
 noInvalidStructsType :: [(Int, Int)] -> Type -> Bool
@@ -198,39 +203,39 @@ replaceLT ls a = pure a
 -- checks if an env is valid
 -- assumes it was made by blankEnv, so envVars are ignored because they're assumed to be []
 validEnv :: Env -> Bool
-validEnv env = and (envFnValid (envStructs env) <$> envFns env) && and (envStructValid <$> envStructs env) && maxTypeVar env >= 0 && maxLTVar env >= 0
+validEnv env = and (envFnValid (envStructs env) <$> envFns env) && and (envStructValid <$> envStructs env) && limTypeVar env >= 0 && limLTVar env >= 0
 
 envFnValid :: [(Int, Int)] -> (Int, Int, Type) -> Bool
-envFnValid s (v,l,t) = noInvalidStructsType s t && noTypeVarsAbove (v-1) (vt t) && noLTVarsAboveType l t && v >= 0 && l >= 0
+envFnValid s (v,l,t) = noInvalidStructsType s t && noTypeVarsGeq v (vt t) && noLTVarsGeqType l t && v >= 0 && l >= 0
 
 envStructValid :: (Int, Int) -> Bool
 envStructValid (v, l) = v >= 0 && l >= 0
 
 -- makes sure all type vars are below a given threshold
-noTypeVarsAbove :: Int -> VarType -> Bool
-noTypeVarsAbove n (TypeVar m) = m <= n
-noTypeVarsAbove n (Struct _ l _) = and $ noTypeVarsAbove n <$> l
-noTypeVarsAbove n (FnType _ _ a b) = noTypeVarsAbove n (vt a) && noTypeVarsAbove n (vt b)
-noTypeVarsAbove _ _ = True
+noTypeVarsGeq :: Int -> VarType -> Bool
+noTypeVarsGeq n (TypeVar m) = m < n
+noTypeVarsGeq n (Struct _ l _) = and $ noTypeVarsGeq n <$> l
+noTypeVarsGeq n (FnType _ _ a b) = noTypeVarsGeq n (vt a) && noTypeVarsGeq n (vt b)
+noTypeVarsGeq _ _ = True
 
 -- makes sure all LT vars are below a given threshold
-noLTVarsAboveType :: Int -> Type -> Bool
-noLTVarsAboveType n t = noLTVarsAboveVarMut n (vm t) && noLTVarsAboveVarType n (vt t)
+noLTVarsGeqType :: Int -> Type -> Bool
+noLTVarsGeqType n t = noLTVarsGeqVarMut n (vm t) && noLTVarsGeqVarType n (vt t)
 
-noLTVarsAboveVarType :: Int -> VarType -> Bool
-noLTVarsAboveVarType n (Struct _ vs ls) = and (noLTVarsAboveVarType n <$> vs) && and (noLTVarsAboveLT n <$> ls)
-noLTVarsAboveVarType n (FnType _ l a b) = noLTVarsAboveLT n l && noLTVarsAboveType n a && noLTVarsAboveType n b
-noLTVarsAboveVarType _ _ = True
+noLTVarsGeqVarType :: Int -> VarType -> Bool
+noLTVarsGeqVarType n (Struct _ vs ls) = and (noLTVarsGeqVarType n <$> vs) && and (noLTVarsGeqLT n <$> ls)
+noLTVarsGeqVarType n (FnType _ l a b) = noLTVarsGeqLT n l && noLTVarsGeqType n a && noLTVarsGeqType n b
+noLTVarsGeqVarType _ _ = True
 
-noLTVarsAboveVarMut :: Int -> VarMut -> Bool
-noLTVarsAboveVarMut n Mut = True
-noLTVarsAboveVarMut n (Immut l) = noLTVarsAboveLT n l
+noLTVarsGeqVarMut :: Int -> VarMut -> Bool
+noLTVarsGeqVarMut n Mut = True
+noLTVarsGeqVarMut n (Immut l) = noLTVarsGeqLT n l
 
-noLTVarsAboveLT :: Int -> LT -> Bool
-noLTVarsAboveLT n (LTSucc a) = noLTVarsAboveLT n a
-noLTVarsAboveLT n (LTMin a b) = noLTVarsAboveLT n a && noLTVarsAboveLT n b
-noLTVarsAboveLT n (LTVar m) = m <= n
-noLTVarsAboveLT _ _ = True
+noLTVarsGeqLT :: Int -> LT -> Bool
+noLTVarsGeqLT n (LTSucc a) = noLTVarsGeqLT n a
+noLTVarsGeqLT n (LTMin a b) = noLTVarsGeqLT n a && noLTVarsGeqLT n b
+noLTVarsGeqLT n (LTVar m) = m < n
+noLTVarsGeqLT _ _ = True
 
 -- substitute variable n for a given expr
 -- first expr arg is the thing to modify (the thing being called), second arg is the thing to put in (the fn argument)
@@ -239,8 +244,8 @@ callExpr n (Lam t a) b = Lam <$> (decType t) <*> (callExpr (n+1) a (succExpr b))
 callExpr n (App a b) c = App <$> (callExpr n a c) <*> (callExpr n b c)
 callExpr n (Var a) b
   | a == n = pure b
-  | a > n  = pure $ Var (a+1)
-  | otherwise = empty
+  | a > n  = pure $ Var (a-1)
+  | a < n  = pure $ Var a
 callExpr _ a _ = pure a
 
 -- simplify expr if possible
@@ -264,10 +269,17 @@ checkCodeTypes code = and $ uncurry checkElem <$> codeToEnvs code `zip` codeFns 
 
 codeToEnvs :: Code -> [Env]
 codeToEnvs code = makeEnv <$> codeFns code where
-  makeEnv (v,l,_,_) = generalEnv { maxTypeVar = v, maxLTVar = l }
+  makeEnv (v,l,_,_) = generalEnv { limTypeVar = v, limLTVar = l }
   generalEnv = blankEnv (allTypes, codeStructs code, 0, 0)
   allTypes = makeTypeEntry <$> codeFns code
   makeTypeEntry (v,l,_,t) = (v,l,t)
+
+-- count the occurrences of a in b
+occurrences :: Expr -> Expr -> Int
+occurrences a b | a == b = 1
+occurrences a (Lam _ b) = occurrences a b
+occurrences a (App b c) = occurrences a b + occurrences a c
+occurrences a _ = 0
 
 -- Arbitrary instances for quickchecking
 instance Arbitrary Expr where
@@ -284,7 +296,7 @@ instance Arbitrary Type where
 instance Arbitrary VarType where
   arbitrary = oneof [
       TypeVar <$> arbitrary,
-      Prim <$> arbitrary,
+      pure (Prim ""),
       Struct <$> arbitrary <*> arbitrary <*> arbitrary,
       FnType <$> arbitrary <*> arbitrary <*> arbitrary <*> arbitrary
     ]
@@ -323,6 +335,20 @@ toCheck4 (env,expr) = let e = blankEnv env in isNothing (typeof e expr)
 -- can make non well typed terms (should fail)
 toCheck5 (env,expr) = let e = blankEnv env in isJust (typeof e expr)
 
+toCheck6 (env,expr) = occurrences u expr > 0 || not (validEnv e) || isNothing (typeof e ex) || f (betaReduce ex) where
+  e = blankEnv env
+  u = PrimVal "uniqueVal" (Type Mut $ Prim "")
+  ex = App expr u
+  f Nothing = False
+  f (Just a) = True -- occurrences u a <= 1
+
+toCheck7 (env,expr) = occurrences u expr > 0 || not (validEnv e) || isNothing (typeof e ex) where
+  e = blankEnv env
+  u = PrimVal "uniqueVal" (Type Mut $ Prim "")
+  ex = App expr u
+  f Nothing = False
+  f (Just a) = occurrences u a <= 1
+
 exampleCode :: Code
 exampleCode = Code { codeFns = fns, codeStructs = structs } where
   fns = [
@@ -335,12 +361,16 @@ main = do
   putStrLn "Type check on example code (should be True):"
   print $ checkCodeTypes exampleCode
   putStrLn "testing unable to type \\a: T. a a"
-  quickCheckWith stdArgs{maxSize = 5, maxSuccess = 1000000} toCheck1
+  quickCheckWith stdArgs{maxSize = 5, maxSuccess = 100000} toCheck1
   putStrLn "testing preservation"
-  quickCheckWith stdArgs{maxSize = 5, maxSuccess = 1000000} toCheck2
+  quickCheckWith stdArgs{maxSize = 5, maxSuccess = 100000} toCheck2
   putStrLn "testing progress"
-  quickCheckWith stdArgs{maxSize = 5, maxSuccess = 1000000} toCheck3
+  quickCheckWith stdArgs{maxSize = 5, maxSuccess = 100000} toCheck3
   putStrLn "testing able to make well typed term (should fail)"
-  quickCheckWith stdArgs{maxSize = 1, maxSuccess = 1000000} toCheck4
+  quickCheckWith stdArgs{maxSize = 1, maxSuccess = 100000} toCheck4
   putStrLn "testing able to make badly typed term (should fail)"
-  quickCheckWith stdArgs{maxSize = 1, maxSuccess = 1000000} toCheck5
+  quickCheckWith stdArgs{maxSize = 1, maxSuccess = 100000} toCheck5
+  putStrLn "testing able to make term that accepts unique val (should fail)"
+  quickCheckWith stdArgs{maxSize = 1, maxSuccess = 1000000} toCheck7
+  putStrLn "muts can't be duplicated"
+  quickCheckWith stdArgs{maxSize = 1, maxSuccess = 1000000} toCheck6
