@@ -1,17 +1,21 @@
 {-# LANGUAGE DeriveFunctor #-}
 
 import Prelude hiding (abs)
-import Control.Monad.State
-import Control.Monad.Trans.Either
+import Control.Monad.Trans.Class (lift)
+import Control.Monad.State (State, get, gets, put, modify, runState)
+import Control.Monad.Trans.Either (EitherT, runEitherT, left)
 import Data.Tuple.Extra (first, second, both)
+import Data.Set (Set, empty, singleton, member)
+import Data.Maybe (maybe)
+import Data.Foldable (fold)
 
-data Expr a = EVar Int a | App (Expr a) (Expr a) a | Abs (Expr a) a | PrimInt Integer a | PrimVal String a   deriving (Show, Eq, Functor)  -- | Let Expr Expr
-data Type = PrimT String | Fn Type Type | TVar Int   deriving (Show, Eq)
--- data PolyType = Concrete Type | Forall PolyType
+data Expr a = EVar Int a | App (Expr a) (Expr a) a | Abs (Expr a) a | Let (Expr a) (Expr a) a | PrimInt Integer a | PrimVal String a  deriving (Show, Eq, Functor)
+data Type = PrimT String | Fn Type Type | TVar Int | GTVar Int   deriving (Show, Eq)
 
 evar n = EVar n ()
 app a b = App a b ()
 abs a = Abs a ()
+let' a b = Let a b ()
 primInt n = PrimInt n ()
 primVal s = PrimVal s ()
 
@@ -19,6 +23,7 @@ exprVal :: Expr a -> a
 exprVal (EVar    _ a) = a
 exprVal (App   _ _ a) = a
 exprVal (Abs     _ a) = a
+exprVal (Let   _ _ a) = a
 exprVal (PrimInt _ a) = a
 exprVal (PrimVal _ a) = a
 
@@ -27,6 +32,7 @@ replaceType n t (TVar m) | m == n = t
 replaceType n t (Fn a b) = Fn (replaceType n t a) (replaceType n t b)
 replaceType _ _ a = a
 
+-- TODO nooo you can't just be inefficient
 replaceTypes :: [(Int, Type)] -> Type -> Type
 replaceTypes = foldr (.) id . fmap (uncurry replaceType)
 
@@ -38,14 +44,46 @@ hasTV _ _ = False
 intType :: Type
 intType = PrimT "int"
 
+newTypeVarNum :: State (a, Int) Int
+newTypeVarNum = modify (second (+ 1)) >> gets snd
+
 newTypeVar :: State (a, Int) Type
-newTypeVar = modify (second (+ 1)) >> gets (TVar . snd)
+newTypeVar = TVar <$> newTypeVarNum
 
 addConstr :: a -> State ([a], b) ()
 addConstr h = modify $ first (h:)
 
+freeTVars :: Type -> Set Int
+freeTVars (Fn a b) = freeTVars a <> freeTVars b
+freeTVars (TVar n) = singleton n
+freeTVars _ = empty
+
+freeTVarsEnv :: [Type] -> Set Int
+freeTVarsEnv = fold . fmap freeTVars
+
+generalize :: Set Int -> Type -> Type
+generalize s (TVar n) | not (member n s) = GTVar n
+generalize s (Fn a b) = Fn (generalize s a) (generalize s b)
+generalize _ a = a
+
+instantiateSt :: Type -> State ([(Int, Int)], Int) Type
+instantiateSt (GTVar n) = gets fst >>= maybe f (pure . TVar) . lookup n where
+  f = do
+    v <- newTypeVarNum
+    modify $ first ((n, v):)
+    pure $ TVar v
+instantiateSt (Fn a b) = Fn <$> instantiateSt a <*> instantiateSt b
+instantiateSt a = pure a
+
+instantiate :: Type -> State (a, Int) Type
+instantiate t = do
+  n <- gets snd
+  let (tt, (_, nn)) = runState (instantiateSt t) ([], n)
+  modify (second $ const nn)
+  pure tt
+
 gather :: [Type] -> Expr () -> State ([(Type, Type)], Int) (Expr Type)
-gather env (EVar n ()) = pure $ EVar n $ env !! n
+gather env (EVar n ()) = instantiate (env !! n) >>= pure . (EVar n)
 gather env (App a b ()) = do
   ga <- gather env a
   gb <- gather env b
@@ -58,6 +96,11 @@ gather env (Abs a ()) = do
   g <- gather (v:env) a
   let t = exprVal g
   pure $ Abs g $ Fn v t
+gather env (Let a b ()) = do
+  ga0 <- gather env a
+  let ga = generalize (freeTVarsEnv env) <$> ga0
+  gb <- gather ((exprVal ga):env) b
+  pure $ Let ga gb $ exprVal gb
 gather env (PrimInt n ()) = pure $ PrimInt n intType
 gather env (PrimVal "+" ()) = pure $ PrimVal "+" $ Fn intType (Fn intType intType)
 
@@ -81,7 +124,7 @@ unify ((a, TVar n):r) = unify ((TVar n, a):r)
 unify (c:_) = left $ "Failed to unify constraint " <> show c
 
 runUnify :: [(Type, Type)] -> Either String [(Int, Type)]
-runUnify = fmap reverse . uncurry f . flip runState [] . runEitherT . unify   where f a s = a >> pure s
+runUnify = uncurry f . flip runState [] . runEitherT . unify   where f a s = a >> pure s
 
 annotateExpr :: Expr () -> Either String (Expr Type)
 annotateExpr e = do
@@ -89,4 +132,7 @@ annotateExpr e = do
   solved <- runUnify tt
   pure $ replaceTypes solved <$> ge
 
-main = print $ annotateExpr $ abs $ abs $ app (app (primVal "+") (evar 1)) (evar 1)
+main = do
+  print $ fmap exprVal $ annotateExpr $ abs $ abs $ app (app (primVal "+") (evar 1)) (evar 1)
+  print $ fmap exprVal $ annotateExpr $ let' (abs $ evar 0) $ app (app (evar 0) (evar 0)) (primInt 0)
+  print $ annotateExpr $ let' (abs $ evar 0) $ app (app (evar 0) (evar 0)) (primInt 0)
