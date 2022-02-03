@@ -9,12 +9,13 @@ import Data.Set (Set, empty, singleton, member)
 import Data.Maybe (maybe)
 import Data.Foldable (fold)
 
-data Expr a = EVar Int a | App (Expr a) (Expr a) a | Abs (Expr a) a | Let (Expr a) (Expr a) a | PrimInt Integer a | PrimVal String a  deriving (Show, Eq, Functor)
+data Expr a = EVar Int a | App (Expr a) (Expr a) a | Abs (Maybe Type) (Expr a) a | Let (Expr a) (Expr a) a | PrimInt Integer a | PrimVal String a  deriving (Show, Eq, Functor)
 data Type = PrimT String | Fn Type Type | TVar Int | GTVar Int   deriving (Show, Eq)
 
 evar n = EVar n ()
 app a b = App a b ()
-abs a = Abs a ()
+abs' t a = Abs (Just t) a ()
+abs a = Abs Nothing a ()
 let' a b = Let a b ()
 primInt n = PrimInt n ()
 primVal s = PrimVal s ()
@@ -22,7 +23,7 @@ primVal s = PrimVal s ()
 exprVal :: Expr a -> a
 exprVal (EVar    _ a) = a
 exprVal (App   _ _ a) = a
-exprVal (Abs     _ a) = a
+exprVal (Abs   _ _ a) = a
 exprVal (Let   _ _ a) = a
 exprVal (PrimInt _ a) = a
 exprVal (PrimVal _ a) = a
@@ -91,11 +92,11 @@ gather env (App a b ()) = do
   let (ta, tb) = (exprVal ga, exprVal gb)
   addConstr (ta, Fn tb v)
   pure $ App ga gb v
-gather env (Abs a ()) = do
-  v <- newTypeVar
+gather env (Abs tv a ()) = do
+  v <- maybe newTypeVar pure tv
   g <- gather (v:env) a
   let t = exprVal g
-  pure $ Abs g $ Fn v t
+  pure $ Abs tv g $ Fn v t
 gather env (Let a b ()) = do
   ga0 <- gather env a
   let ga = generalize (freeTVarsEnv env) <$> ga0
@@ -136,3 +137,6 @@ main = do
   print $ fmap exprVal $ annotateExpr $ abs $ abs $ app (app (primVal "+") (evar 1)) (evar 1)
   print $ fmap exprVal $ annotateExpr $ let' (abs $ evar 0) $ app (app (evar 0) (evar 0)) (primInt 0)
   print $ annotateExpr $ let' (abs $ evar 0) $ app (app (evar 0) (evar 0)) (primInt 0)
+  print $ fmap exprVal $ annotateExpr $ abs' intType (evar 0)
+  print $ annotateExpr $ abs' intType $ app (evar 0) (primInt 0)
+  print $ fmap exprVal $ annotateExpr $ abs $ app (evar 0) (primInt 0)
