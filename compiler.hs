@@ -77,6 +77,7 @@ freeTVars _ = empty
 freeTVarsEnv :: [Type] -> Set Int
 freeTVarsEnv = fold . fmap freeTVars
 
+-- note: every var only ever shows up as a GVTVar or a TVar, never both
 generalize :: Set Int -> Type -> Type
 generalize s (TVar n) | not (member n s) = GTVar n
 generalize s (Fn a b) = Fn (generalize s a) (generalize s b)
@@ -91,11 +92,12 @@ instantiateSt (GTVar n) = gets fst >>= maybe f (pure . TVar) . lookup n where
 instantiateSt (Fn a b) = Fn <$> instantiateSt a <*> instantiateSt b
 instantiateSt a = pure a
 
-instantiate :: Type -> State (a, Int) Type
+instantiate :: Type -> State ([(Type, Type)], Int) Type
 instantiate t = do
   n <- gets snd
-  let (tt, (_, nn)) = runState (instantiateSt t) ([], n)
+  let (tt, (gtmap, nn)) = runState (instantiateSt t) ([], n)
   modify (second $ const nn)
+  sequence $ (addConstr . both TVar) <$> gtmap
   pure tt
 
 gather :: [Type] -> Expr () -> State ([(Type, Type)], Int) (Expr Type)
@@ -118,7 +120,7 @@ gather env (Let a b ()) = do
   gb <- gather ((exprVal ga):env) b
   pure $ Let ga gb $ exprVal gb
 gather env (PrimInt n ()) = pure $ PrimInt n intType
-gather env (PrimVal "+" ()) = pure $ PrimVal "+" $ Fn intType intType -- Fn intType (Fn intType intType)
+gather env (PrimVal "+" ()) = pure $ PrimVal "+" $ Fn intType (Fn intType intType)
 
 runGather :: Expr () -> (Expr Type, [(Type, Type)])
 runGather = second fst . flip runState ([], 0) . gather []
