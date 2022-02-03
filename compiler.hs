@@ -77,6 +77,14 @@ freeTVars _ = empty
 freeTVarsEnv :: [Type] -> Set Int
 freeTVarsEnv = fold . fmap freeTVars
 
+replaceTVar :: Int -> Int -> Type -> Type
+replaceTVar n m (TVar p) | p == n = TVar m
+replaceTVar n m (Fn a b) = Fn (replaceTVar n m a) (replaceTVar n m b)
+replaceTVar _ _ a = a
+
+replaceTVars :: [(Int, Int)] -> Type -> Type
+replaceTVars = foldr (.) id . fmap (uncurry replaceTVar)
+
 -- note: every var only ever shows up as a GVTVar or a TVar, never both
 generalize :: Set Int -> Type -> Type
 generalize s (TVar n) | not (member n s) = GTVar n
@@ -97,9 +105,16 @@ instantiate t = do
   n <- gets snd
   let (tt, (gtmap, nn)) = runState (instantiateSt t) ([], n)
   modify (second $ const nn)
-  sequence $ (addConstr . both TVar) <$> gtmap
+  constrs <- gets fst
+  sequence $ f gtmap <$> constrs
   pure tt
+  where
+    f gtmap (ta, tb) | ta' /= ta || tb' /= tb = addConstr (ta', tb') where
+      ta' = replaceTVars gtmap ta
+      tb' = replaceTVars gtmap tb
+    f _ _ = pure ()
 
+-- note: GTVars never get added to the constraint set
 gather :: [Type] -> Expr () -> State ([(Type, Type)], Int) (Expr Type)
 gather env (EVar n ()) = instantiate (env !! n) >>= pure . (EVar n)
 gather env (App a b ()) = do
@@ -170,6 +185,10 @@ main = do
   f $ r c
   g $ r c
   g $ r $ r c
+  p $ "chuck"
+  g $ r a
+  g $ r b
+  g $ r $ r a
 
 anf :: Expr () -> [Expr ()] -> (Expr () -> [Expr ()] -> Expr ()) -> Expr ()
 anf (App a b ()) l c = anf a  (b :l ) (\a'  (b' :l' ) ->
