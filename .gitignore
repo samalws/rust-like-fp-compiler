@@ -1,5 +1,5 @@
-compiler
-compiler.o
-compiler.hi
+Main
+*.o
+*.hi
 .envrc
 .direnv

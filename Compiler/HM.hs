@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveFunctor #-}
+module Compiler.HM where
 
 import Prelude hiding (abs)
 import Control.Monad.Trans.Class (lift)
@@ -8,58 +8,7 @@ import Data.Tuple.Extra (first, second, both)
 import Data.Set (Set, empty, singleton, member)
 import Data.Maybe (maybe)
 import Data.Foldable (fold)
-
--- type argument on Abs may not have any GTVars
-data Expr a = EVar Int a | App (Expr a) (Expr a) a | Abs (Maybe Type) (Expr a) a | Let (Expr a) (Expr a) a | PrimInt Integer a | PrimVal String a  deriving (Show, Eq, Functor)
-data Type = PrimT String | Fn Type Type | TVar Int | GTVar Int   deriving (Show, Eq)
-
-evar n = EVar n ()
-app a b = App a b ()
-abs t a = Abs t a ()
-abs' = abs Nothing
-let' a b = Let a b ()
-primInt n = PrimInt n ()
-primVal s = PrimVal s ()
-
-exprVal :: Expr a -> a
-exprVal (EVar    _ q) = q
-exprVal (App   _ _ q) = q
-exprVal (Abs   _ _ q) = q
-exprVal (Let   _ _ q) = q
-exprVal (PrimInt _ q) = q
-exprVal (PrimVal _ q) = q
-
-incVars :: Int -> Expr a -> Expr a
-incVars n (EVar m q) | m >= n = EVar (m+1) q
-incVars n (App x y q) = App (incVars n x) (incVars n y) q
-incVars n (Abs t x q) = Abs t (incVars (n+1) x) q
-incVars n (Let x y q) = Let (incVars n x) (incVars (n+1) y) q
-incVars n x = x
-
-replaceVar :: Int -> Expr a -> Expr a -> Expr a
-replaceVar m a (EVar n _) | m == n = a
-replaceVar m a (EVar n q) | m < n = EVar (n-1) q
-replaceVar m a (App x y q) = App (replaceVar m a x) (replaceVar m a y) q
-replaceVar m a (Abs t x q) = Abs t (replaceVar (m+1) (incVars 0 a) x) q
-replaceVar m a (Let x y q) = Let (replaceVar m a x) (replaceVar (m+1) (incVars 0 a) y) q
-replaceVar _ _ x = x
-
-replaceType :: Int -> Type -> Type -> Type
-replaceType n t (TVar m) | m == n = t
-replaceType n t (Fn a b) = Fn (replaceType n t a) (replaceType n t b)
-replaceType _ _ a = a
-
--- TODO nooo you can't just be inefficient
-replaceTypes :: [(Int, Type)] -> Type -> Type
-replaceTypes = foldr (.) id . fmap (uncurry replaceType)
-
-hasTV :: Int -> Type -> Bool
-hasTV n (TVar m) = n == m
-hasTV n (Fn a b) = hasTV n a || hasTV n b
-hasTV _ _ = False
-
-intType :: Type
-intType = PrimT "int"
+import Compiler.Types
 
 newTypeVarNum :: State (a, Int) Int
 newTypeVarNum = modify (second (+ 1)) >> gets snd
@@ -165,52 +114,3 @@ annotateExpr e = do
   let (ge, tt) = runGather e
   solved <- runUnify tt
   pure $ replaceTypes solved <$> ge
-
-main = do
-  let a = abs' $ abs' $ app (app (primVal "+") (evar 1)) (evar 1)
-  let b = let' (abs' $ evar 0) $ app (app (evar 0) (evar 0)) (primInt 0)
-  let c = app (primVal "+") (primInt 0)
-  let p = putStrLn
-  let f = p . show . annotateExpr
-  let g = p . show . fmap exprVal . annotateExpr
-  let r = runAnf
-  g $ a
-  g $ b
-  f $ b
-  g $ abs (Just intType) (evar 0)
-  f $ abs (Just intType) $ app (evar 0) (primInt 0)
-  g $ abs' $ app (evar 0) (primInt 0)
-  p $ "sneed"
-  g $ c
-  p $ show $ r c
-  f $ r c
-  g $ r c
-  g $ r $ r c
-  p $ "chuck"
-  p $ show a
-  p $ show $ r a
-  p $ show $ r $ r a
-  g $ a
-  g $ r a
-  g $ r $ r a
-  g $ r $ r $ r $ r a
-  print $ (r $ r $ r $ r $ r $ r $ r a) == r a
-
-anf :: Expr () -> [Expr ()] -> (Expr () -> [Expr ()] -> Expr ()) -> Expr ()
-anf (App a b ()) l c = anf a  (b :l ) (\a'  (b' :l' ) ->
-                       anf b' (a':l') (\b'' (a'':l'') ->
-                         let'
-                           (app a'' b'')
-                           (c (evar 0) (map (incVars 0) l''))
-                       ))
-anf (Abs t a ()) l c = let'
-                         (abs t (runAnf a))
-                         (c (evar 0) (map (incVars 0) l))
-anf (Let a b ()) l c = anf a ((evar 0):b:l) (\a' ((EVar z' ()):b':l') ->
-                       anf (replaceVar z' a' b') l' (\b'' l'' ->
-                       c b'' l'' ))
-anf a l c = c a l
-
--- should be idempotent
-runAnf :: Expr () -> Expr ()
-runAnf a = anf a [] (\a' [] -> a')
