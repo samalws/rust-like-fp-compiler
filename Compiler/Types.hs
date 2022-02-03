@@ -5,7 +5,9 @@ module Compiler.Types where
 import Prelude hiding (abs)
 import Test.QuickCheck.Arbitrary.Generic (Arbitrary, arbitrary, shrink, genericArbitrary, genericShrink)
 import GHC.Generics (Generic)
-import Data.Maybe (maybe)
+import Control.Monad (mzero)
+import Data.Maybe (maybe, isJust)
+import Control.Monad.State (StateT, runStateT, gets, modify)
 
 -- type argument on Abs may not have any GTVars
 data PrimValEnum = Plus   deriving (Show, Eq, Generic)
@@ -92,3 +94,20 @@ hasTV _ _ = False
 
 intType :: Type
 intType = PrimT IntT
+
+typesAlphaEquiv :: Type -> Type -> StateT [(Int, Int)] Maybe ()
+typesAlphaEquiv (GTVar n) (GTVar m) = typesAlphaEquiv (TVar n) (TVar m)
+typesAlphaEquiv (TVar n) (TVar m) = do
+  s <- gets $ lookup n
+  maybe tryAddVar checkVar s
+  where
+    tryAddVar = do
+      s <- gets $ lookup m . fmap (\(a,b) -> (b,a))
+      maybe addVar (const mzero) s
+    addVar = modify ((n,m):)
+    checkVar b = if b == m then pure () else mzero
+typesAlphaEquiv (Fn a b) (Fn c d) = typesAlphaEquiv a c >> typesAlphaEquiv b d
+typesAlphaEquiv (PrimT a) (PrimT b) = if a == b then pure () else mzero
+
+runTypesAlphaEquiv :: Type -> Type -> Bool
+runTypesAlphaEquiv a b = isJust $ runStateT (typesAlphaEquiv a b) []

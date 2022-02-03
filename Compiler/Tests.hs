@@ -14,7 +14,11 @@ anfIdempotent e = validExpr e `implies` (let e' = runAnf e in runAnf e' == e')
 anfStaysWellTyped :: Expr () -> Bool
 anfStaysWellTyped e = ((validExpr e) && (isRight $ annotateExpr e)) `implies` (isRight $ annotateExpr $ runAnf e)
 
--- TODO anf preserves type
+anfPreservesType :: Expr () -> Bool
+anfPreservesType e = (validExpr e) `implies` (f (exprVal <$> annotateExpr e) (exprVal <$> annotateExpr (runAnf e))) where
+  f (Left _) (Left _) = True
+  f (Right a) (Right b) = runTypesAlphaEquiv a b
+  f _ _ = False
 
 tests :: IO ()
-tests = quickCheck (f anfIdempotent) >> quickCheck (f anfStaysWellTyped)   where f = withMaxSuccess 1000000
+tests = f anfIdempotent >> f anfStaysWellTyped >> f anfPreservesType   where f t = quickCheck (withMaxSuccess 1000000 t)
