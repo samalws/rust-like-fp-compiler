@@ -85,7 +85,7 @@ gather env (Let a b ()) = do
   gb <- gather ((exprVal ga):env) b
   pure $ Let ga gb $ exprVal gb
 gather env (PrimInt n ()) = pure $ PrimInt n intType
-gather env (PrimVal "+" ()) = pure $ PrimVal "+" $ Fn intType (Fn intType intType)
+gather env (PrimVal Plus ()) = pure $ PrimVal Plus $ Fn intType (Fn intType intType)
 
 runGather :: Expr () -> (Expr Type, [(Type, Type)])
 runGather = second fst . flip runState ([], 0) . gather []

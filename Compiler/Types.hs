@@ -1,12 +1,33 @@
-{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DeriveFunctor, DeriveGeneric #-}
 
 module Compiler.Types where
 
 import Prelude hiding (abs)
+import Test.QuickCheck.Arbitrary.Generic (Arbitrary, arbitrary, shrink, genericArbitrary, genericShrink)
+import GHC.Generics (Generic)
+import Data.Maybe (maybe)
 
 -- type argument on Abs may not have any GTVars
-data Expr a = EVar Int a | App (Expr a) (Expr a) a | Abs (Maybe Type) (Expr a) a | Let (Expr a) (Expr a) a | PrimInt Integer a | PrimVal String a  deriving (Show, Eq, Functor)
-data Type = PrimT String | Fn Type Type | TVar Int | GTVar Int   deriving (Show, Eq)
+data PrimValEnum = Plus   deriving (Show, Eq, Generic)
+data PrimTypeEnum = IntT   deriving (Show, Eq, Generic)
+data Expr a = EVar Int a | App (Expr a) (Expr a) a | Abs (Maybe Type) (Expr a) a | Let (Expr a) (Expr a) a | PrimInt Integer a | PrimVal PrimValEnum a  deriving (Show, Eq, Functor, Generic)
+data Type = PrimT PrimTypeEnum | Fn Type Type | TVar Int | GTVar Int   deriving (Show, Eq, Generic)
+
+instance Arbitrary PrimValEnum where
+  arbitrary = genericArbitrary
+  shrink = genericShrink
+
+instance Arbitrary PrimTypeEnum where
+  arbitrary = genericArbitrary
+  shrink = genericShrink
+
+instance (Arbitrary a) => Arbitrary (Expr a) where
+  arbitrary = genericArbitrary
+  shrink = genericShrink
+
+instance Arbitrary Type where
+  arbitrary = genericArbitrary
+  shrink = genericShrink
 
 evar n = EVar n ()
 app a b = App a b ()
@@ -23,6 +44,22 @@ exprVal (Abs   _ _ q) = q
 exprVal (Let   _ _ q) = q
 exprVal (PrimInt _ q) = q
 exprVal (PrimVal _ q) = q
+
+validAbsType :: Type -> Bool
+validAbsType (PrimT _) = True
+validAbsType (Fn a b) = validAbsType a && validAbsType b
+validAbsType _ = False -- TODO what abt type variables?
+
+validExpr' :: Int -> Expr () -> Bool
+validExpr' n (EVar m ()) = m < n && m >= 0
+validExpr' n (App a b ()) = validExpr' n a && validExpr' n b
+validExpr' n (Abs t a ()) = maybe True validAbsType t && validExpr' (n+1) a
+validExpr' n (Let a b ()) = validExpr' n a && validExpr' (n+1) b
+validExpr' n (PrimInt _ ()) = True
+validExpr' n (PrimVal _ ()) = True
+
+validExpr :: Expr () -> Bool
+validExpr = validExpr' 0
 
 incVars :: Int -> Expr a -> Expr a
 incVars n (EVar m q) | m >= n = EVar (m+1) q
@@ -54,4 +91,4 @@ hasTV n (Fn a b) = hasTV n a || hasTV n b
 hasTV _ _ = False
 
 intType :: Type
-intType = PrimT "int"
+intType = PrimT IntT

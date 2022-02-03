@@ -2,11 +2,12 @@ import Prelude hiding (abs)
 import Compiler.Types
 import Compiler.HM
 import Compiler.ANF
+import Compiler.Tests
 
 main = do
-  let a = abs' $ abs' $ app (app (primVal "+") (evar 1)) (evar 1)
+  let a = abs' $ abs' $ app (app (primVal Plus) (evar 1)) (evar 1)
   let b = let' (abs' $ evar 0) $ app (app (evar 0) (evar 0)) (primInt 0)
-  let c = app (primVal "+") (primInt 0)
+  let c = app (primVal Plus) (primInt 0)
   let p = putStrLn
   let f = p . show . annotateExpr
   let g = p . show . fmap exprVal . annotateExpr
@@ -32,3 +33,5 @@ main = do
   g $ r $ r a
   g $ r $ r $ r $ r a
   print $ (r $ r $ r $ r $ r $ r $ r a) == r a
+
+  tests
