@@ -38,6 +38,7 @@ incVars n x = x
 
 replaceVar :: Int -> Expr a -> Expr a -> Expr a
 replaceVar m a (EVar n _) | m == n = a
+replaceVar m a (EVar n q) | m < n = EVar (n-1) q
 replaceVar m a (App x y q) = App (replaceVar m a x) (replaceVar m a y) q
 replaceVar m a (Abs t x q) = Abs t (replaceVar (m+1) (incVars 0 a) x) q
 replaceVar m a (Let x y q) = Let (replaceVar m a x) (replaceVar (m+1) (incVars 0 a) y) q
@@ -186,9 +187,14 @@ main = do
   g $ r c
   g $ r $ r c
   p $ "chuck"
+  p $ show a
+  p $ show $ r a
+  p $ show $ r $ r a
+  g $ a
   g $ r a
-  g $ r b
   g $ r $ r a
+  g $ r $ r $ r $ r a
+  print $ (r $ r $ r $ r $ r $ r $ r a) == r a
 
 anf :: Expr () -> [Expr ()] -> (Expr () -> [Expr ()] -> Expr ()) -> Expr ()
 anf (App a b ()) l c = anf a  (b :l ) (\a'  (b' :l' ) ->
@@ -205,5 +211,6 @@ anf (Let a b ()) l c = anf a ((evar 0):b:l) (\a' ((EVar z' ()):b':l') ->
                        c b'' l'' ))
 anf a l c = c a l
 
+-- should be idempotent
 runAnf :: Expr () -> Expr ()
 runAnf a = anf a [] (\a' [] -> a')
