@@ -28,6 +28,13 @@ exprVal (Let   _ _ a) = a
 exprVal (PrimInt _ a) = a
 exprVal (PrimVal _ a) = a
 
+incFreeVars :: Int -> Expr a -> Expr a
+incFreeVars n (EVar m a) | m >= n = EVar (m+1) a
+incFreeVars n (App x y a) = App (incFreeVars n x) (incFreeVars n y) a
+incFreeVars n (Abs t x a) = Abs t (incFreeVars (n+1) x) a
+incFreeVars n (Let x y a) = Let (incFreeVars n x) (incFreeVars (n+1) y) a
+incFreeVars n x = x
+
 replaceType :: Int -> Type -> Type -> Type
 replaceType n t (TVar m) | m == n = t
 replaceType n t (Fn a b) = Fn (replaceType n t a) (replaceType n t b)
