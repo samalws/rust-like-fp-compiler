@@ -25,10 +25,16 @@ varParser' m = do
   v <- varParser
   maybe (fail $ "Unknown variable " <> v) pure (lookup v m)
 
+-- parsec's sepBy1 doesnt use try
+mySepBy1 a b = (:) <$> a <*> helper where
+  helper = try (b >> mySepBy1 a b) <|> pure []
+
 appParser m = do
-  a <- subExprParser m
-  b <- subExprParser m
-  pure $ app a b
+  l <- mySepBy1 (subExprParser m) (many1 space)
+  pure $ f $ reverse l
+  where
+    f [a] = a
+    f (a:r) = app (f r) a
 
 absParser m = do
   char '\\'
@@ -47,6 +53,8 @@ letParser m = do
   many1 space
   a <- exprParser' m
   many1 space
+  string "in"
+  many1 space
   b <- exprParser' (addVar m v)
   pure $ let' a b
 
@@ -55,15 +63,18 @@ primValParser = char '+' >> pure (primVal Plus)
 parenParser m = char '(' >> spaces >> exprParser' m <* spaces <* char ')'
 
 subExprParser :: Map String Int -> Parser (Expr ())
-subExprParser m =     try (letParser m)
-                  <|> try (evar <$> varParser' m)
+subExprParser m =     try (evar <$> varParser' m)
                   <|> try (absParser m)
                   <|> try (primInt <$> int)
+                  <|> try (letParser m)
                   <|> try primValParser
                   <|> try (parenParser m)
 
 exprParser' :: Map String Int -> Parser (Expr ())
-exprParser' m = subExprParser m <|> try (appParser m)
+exprParser' m = try (appParser m) <|> try (subExprParser m)
 
 exprParser :: Parser (Expr ())
 exprParser = exprParser' empty
+
+exprFileParser :: Parser (Expr ())
+exprFileParser = spaces >> exprParser <* spaces <* eof

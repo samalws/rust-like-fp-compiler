@@ -1,37 +1,21 @@
 import Prelude hiding (abs)
+import Text.Parsec
+import Text.Parsec.String
 import Compiler.Types
 import Compiler.HM
 import Compiler.ANF
-import Compiler.Tests
+import Compiler.Parser
 
 main = do
-  let a = abs' $ abs' $ app (app (primVal Plus) (evar 1)) (evar 1)
-  let b = let' (abs' $ evar 0) $ app (app (evar 0) (evar 0)) (primInt 0)
-  let c = app (primVal Plus) (primInt 0)
-  let p = putStrLn
-  let f = p . show . annotateExpr
-  let g = p . show . fmap exprVal . annotateExpr
-  let r = runAnf
-  g $ a
-  g $ b
-  f $ b
-  g $ abs (Just intType) (evar 0)
-  f $ abs (Just intType) $ app (evar 0) (primInt 0)
-  g $ abs' $ app (evar 0) (primInt 0)
-  p $ "sneed"
-  g $ c
-  p $ show $ r c
-  f $ r c
-  g $ r c
-  g $ r $ r c
-  p $ "chuck"
-  p $ show a
-  p $ show $ r a
-  p $ show $ r $ r a
-  g $ a
-  g $ r a
-  g $ r $ r a
-  g $ r $ r $ r $ r a
-  print $ (r $ r $ r $ r $ r $ r $ r a) == r a
-
-  tests
+  contents <- parseFromFile exprFileParser "input.txt"
+  case contents of
+    Left e -> print e
+    Right e -> do
+      putStrLn "Expression parsed:"
+      print e
+      putStrLn "Type of expression:"
+      print $ exprVal <$> annotateExpr e
+      putStrLn "A-normal form:"
+      print $ runAnf e
+      putStrLn "Type of a-normal form:"
+      print $ exprVal <$> annotateExpr (runAnf e)
