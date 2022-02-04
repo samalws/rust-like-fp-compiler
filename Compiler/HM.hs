@@ -49,12 +49,24 @@ instantiateSt (GTVar n) = gets fst >>= maybe f (pure . TVar) . lookup n where
 instantiateSt (Fn a b) = Fn <$> instantiateSt a <*> instantiateSt b
 instantiateSt a = pure a
 
+repeatedInstantiateSt :: [(Type, Type)] -> Type -> State ([(Int, Int)], Int) Type
+repeatedInstantiateSt constrs t = do
+  lengthBefore <- gets $ length . fst
+  t' <- instantiateSt t
+  mapAfter <- gets fst
+  let ldiff = length mapAfter - lengthBefore
+  if ldiff == 0
+    then pure ()
+    else do
+      -- TODO call repeatedInstantiateSt on all related variables in constrs
+      pure ()
+  pure t'
+
 instantiate :: Type -> State ([(Type, Type)], Int) Type
 instantiate t = do
-  n <- gets snd
-  let (tt, (gtmap, nn)) = runState (instantiateSt t) ([], n)
+  (constrs, n) <- get
+  let (tt, (gtmap, nn)) = runState (repeatedInstantiateSt constrs t) ([], n)
   modify (second $ const nn)
-  constrs <- gets fst
   sequence $ f gtmap <$> constrs
   pure tt
   where
@@ -83,7 +95,7 @@ gather env (App a b ()) = do
   addConstr (ta, Fn tb v)
   pure $ App ga gb v
 gather env (Abs tv a ()) = do
-  v <- newTypeVar -- TODO CPS conversion kills these maybe newTypeVar pure tv
+  v <- maybe newTypeVar pure tv
   g <- gather (v:env) a
   let t = exprVal g
   pure $ Abs tv g $ Fn v t

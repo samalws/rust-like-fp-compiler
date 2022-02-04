@@ -3,7 +3,7 @@
 module Compiler.Types where
 
 import Prelude hiding (abs)
-import Test.QuickCheck (elements)
+import Test.QuickCheck (Gen, elements, oneof, chooseInt)
 import Test.QuickCheck.Arbitrary.Generic (Arbitrary, arbitrary, shrink, genericArbitrary, genericShrink)
 import GHC.Generics (Generic)
 import Control.Monad (mzero)
@@ -24,8 +24,25 @@ instance Arbitrary PrimTypeEnum where
   arbitrary = genericArbitrary
   shrink = genericShrink
 
+genArbExpr :: (Arbitrary a) => Int -> Gen (Expr a)
+genArbExpr n | n > 3 = oneof [
+    EVar <$> chooseInt (0,n-1) <*> arbitrary,
+    PrimInt <$> arbitrary <*> arbitrary
+  ]
+genArbExpr n = oneof [
+    EVar <$> chooseInt (0,n-1) <*> arbitrary,
+    App <$> gaen <*> gaen <*> arbitrary,
+    Abs Nothing {- TODO -} <$> gaen1 <*> arbitrary,
+    Let <$> gaen <*> gaen1 <*> arbitrary,
+    PrimInt <$> arbitrary <*> arbitrary,
+    (\a b -> PrimOp Plus [a,b]) <$> gaen <*> gaen <*> arbitrary
+  ]
+  where
+    gaen  = genArbExpr n
+    gaen1 = genArbExpr (n+1)
+
 instance (Arbitrary a) => Arbitrary (Expr a) where
-  arbitrary = genericArbitrary
+  arbitrary = genArbExpr 0
   shrink = genericShrink
 
 instance Arbitrary Type where
