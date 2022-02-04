@@ -2,8 +2,10 @@ import Prelude hiding (abs)
 import Text.Parsec
 import Text.Parsec.String
 import Compiler.Types
+import Compiler.Tests
 import Compiler.HM
 import Compiler.ANF
+import Compiler.CPS
 import Compiler.Parser
 
 main = do
@@ -15,7 +17,13 @@ main = do
       print e
       putStrLn "Type of expression:"
       print $ exprVal <$> annotateExpr e
+      let ee = runAnf e
       putStrLn "A-normal form:"
-      print $ runAnf e
+      print ee
       putStrLn "Type of a-normal form:"
-      print $ exprVal <$> annotateExpr (runAnf e)
+      print $ exprVal <$> annotateExpr ee
+      let eee = anfWrapCps ee
+      putStrLn "CPS form:"
+      print eee
+      putStrLn "Type of CPS form:"
+      print $ exprVal <$> annotateExpr eee

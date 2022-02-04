@@ -89,8 +89,15 @@ replaceTypes = foldr (.) id . fmap (uncurry replaceType)
 
 hasTV :: Int -> Type -> Bool
 hasTV n (TVar m) = n == m
+hasTV n (GTVar m) = n == m
 hasTV n (Fn a b) = hasTV n a || hasTV n b
 hasTV _ _ = False
+
+highestTypeVar :: Type -> Int
+highestTypeVar (TVar n) = n
+highestTypeVar (GTVar n) = n
+highestTypeVar (Fn a b) = max (highestTypeVar a) (highestTypeVar b)
+highestTypeVar _ = -1
 
 intType :: Type
 intType = PrimT IntT
@@ -108,6 +115,7 @@ typesAlphaEquiv (TVar n) (TVar m) = do
     checkVar b = if b == m then pure () else mzero
 typesAlphaEquiv (Fn a b) (Fn c d) = typesAlphaEquiv a c >> typesAlphaEquiv b d
 typesAlphaEquiv (PrimT a) (PrimT b) = if a == b then pure () else mzero
+typesAlphaEquiv _ _ = mzero
 
 runTypesAlphaEquiv :: Type -> Type -> Bool
 runTypesAlphaEquiv a b = isJust $ runStateT (typesAlphaEquiv a b) []
