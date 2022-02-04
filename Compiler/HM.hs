@@ -2,8 +2,7 @@ module Compiler.HM where
 
 import Prelude hiding (abs)
 import Control.Monad.Trans.Class (lift)
-import Control.Monad.State (State, get, gets, put, modify, runState)
-import Control.Monad.Trans.Either (EitherT, runEitherT, left)
+import Control.Monad.State (StateT, State, get, gets, put, modify, runStateT, runState)
 import Data.Tuple.Extra (first, second, both)
 import Data.Set (Set, empty, singleton, member)
 import Data.Maybe (maybe)
@@ -64,7 +63,7 @@ instantiate t = do
       tb' = replaceTVars gtmap tb
     f _ _ = pure ()
 
--- TODO why am I still in HM? by joji
+-- do not use for anything except for prim vals; breaks on weird edge cases
 typeToCPS :: Type -> State (a, Int) Type
 typeToCPS (Fn a b) = do
   a' <- typeToCPS a
@@ -72,10 +71,6 @@ typeToCPS (Fn a b) = do
   v  <- newTypeVar
   pure $ Fn a' (Fn (Fn b' v) v)
 typeToCPS t = pure t
-
-runTypeToCPS :: Type -> Type
-runTypeToCPS t = f $ runState (typeToCPS t) ((), maxTypeVar t + 1) where
-  f (tt, ((), n)) = Fn (Fn tt (TVar (n+1))) (TVar (n+1))
 
 primValType :: PrimValEnum -> State (a, Int) Type
 primValType Succ = pure $ Fn intType intType
@@ -108,24 +103,24 @@ gather env (PrimVal a ()) = PrimVal a <$> primValType a
 runGather :: Expr () -> (Expr Type, [(Type, Type)])
 runGather = second fst . flip runState ([], 0) . gather []
 
-addUnify :: (Int, Type) -> State [(Int, Type)] ()
+addUnify :: (Monad m) => (Int, Type) -> StateT [(Int, Type)] m ()
 addUnify a = modify (a:)
 
 replaceUnify :: Int -> Type -> [(Type, Type)] -> [(Type, Type)]
 replaceUnify n t = fmap (both $ replaceType n t)
 
-unify :: [(Type, Type)] -> EitherT String (State [(Int, Type)]) ()
+unify :: [(Type, Type)] -> StateT [(Int, Type)] (Either String) ()
 unify [] = pure ()
 unify ((a,b):r) | a == b = unify r
 unify ((Fn a b, Fn c d):r) = unify ((a,c):(b,d):r)
 unify ((TVar n, a):r)
-  | hasTV n a = left $ "Cannot construct infinte type " <> show (TVar n) <> " = " <> show a
-  | otherwise = lift (addUnify (n, a)) >> unify (replaceUnify n a r)
+  | hasTV n a = lift $ Left $ "Cannot construct infinte type " <> show (TVar n) <> " = " <> show a
+  | otherwise = addUnify (n, a) >> unify (replaceUnify n a r)
 unify ((a, TVar n):r) = unify ((TVar n, a):r)
-unify (c:_) = left $ "Failed to unify constraint " <> show c
+unify (c:_) = lift $ Left $ "Failed to unify constraint " <> show c
 
 runUnify :: [(Type, Type)] -> Either String [(Int, Type)]
-runUnify = uncurry f . flip runState [] . runEitherT . unify   where f a s = a >> pure s
+runUnify t = snd <$> runStateT (unify t) []
 
 annotateExpr :: Expr () -> Either String (Expr Type)
 annotateExpr e = do
