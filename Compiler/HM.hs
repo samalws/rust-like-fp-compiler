@@ -64,6 +64,24 @@ instantiate t = do
       tb' = replaceTVars gtmap tb
     f _ _ = pure ()
 
+-- TODO why am I still in HM? by joji
+typeToCPS :: Type -> State (a, Int) Type
+typeToCPS (Fn a b) = do
+  a' <- typeToCPS a
+  b' <- typeToCPS b
+  v  <- newTypeVar
+  pure $ Fn a' (Fn (Fn b' v) v)
+typeToCPS t = pure t
+
+runTypeToCPS :: Type -> Type
+runTypeToCPS t = f $ runState (typeToCPS t) ((), maxTypeVar t + 1) where
+  f (tt, ((), n)) = Fn (Fn tt (TVar (n+1))) (TVar (n+1))
+
+primValType :: PrimValEnum -> State (a, Int) Type
+primValType Succ = pure $ Fn intType intType
+primValType Plus = pure $ Fn intType (Fn intType intType)
+primValType (PrimValCPS a) = primValType a >>= typeToCPS
+
 -- note: GTVars never get added to the constraint set
 gather :: [Type] -> Expr () -> State ([(Type, Type)], Int) (Expr Type)
 gather env (EVar n ()) = instantiate (env !! n) >>= pure . (EVar n)
@@ -75,7 +93,7 @@ gather env (App a b ()) = do
   addConstr (ta, Fn tb v)
   pure $ App ga gb v
 gather env (Abs tv a ()) = do
-  v <- maybe newTypeVar pure tv
+  v <- newTypeVar -- TODO CPS conversion kills these maybe newTypeVar pure tv
   g <- gather (v:env) a
   let t = exprVal g
   pure $ Abs tv g $ Fn v t
@@ -85,7 +103,7 @@ gather env (Let a b ()) = do
   gb <- gather ((exprVal ga):env) b
   pure $ Let ga gb $ exprVal gb
 gather env (PrimInt n ()) = pure $ PrimInt n intType
-gather env (PrimVal Plus ()) = pure $ PrimVal Plus $ Fn intType (Fn intType intType)
+gather env (PrimVal a ()) = PrimVal a <$> primValType a
 
 runGather :: Expr () -> (Expr Type, [(Type, Type)])
 runGather = second fst . flip runState ([], 0) . gather []

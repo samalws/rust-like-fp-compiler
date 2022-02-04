@@ -27,3 +27,5 @@ main = do
       print eee
       putStrLn "Type of CPS form:"
       print $ exprVal <$> annotateExpr eee
+      putStrLn "Expected type of CPS form:"
+      print $ runTypeToCPS . exprVal <$> annotateExpr e

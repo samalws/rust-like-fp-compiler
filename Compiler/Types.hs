@@ -3,6 +3,7 @@
 module Compiler.Types where
 
 import Prelude hiding (abs)
+import Test.QuickCheck (elements)
 import Test.QuickCheck.Arbitrary.Generic (Arbitrary, arbitrary, shrink, genericArbitrary, genericShrink)
 import GHC.Generics (Generic)
 import Control.Monad (mzero)
@@ -10,13 +11,13 @@ import Data.Maybe (maybe, isJust)
 import Control.Monad.State (StateT, runStateT, gets, modify)
 
 -- type argument on Abs may not have any GTVars
-data PrimValEnum = Plus   deriving (Show, Eq, Generic)
+data PrimValEnum = Succ | Plus | PrimValCPS PrimValEnum   deriving (Show, Eq, Generic)
 data PrimTypeEnum = IntT   deriving (Show, Eq, Generic)
 data Expr a = EVar Int a | App (Expr a) (Expr a) a | Abs (Maybe Type) (Expr a) a | Let (Expr a) (Expr a) a | PrimInt Integer a | PrimVal PrimValEnum a  deriving (Show, Eq, Functor, Generic)
 data Type = PrimT PrimTypeEnum | Fn Type Type | TVar Int | GTVar Int   deriving (Show, Eq, Generic)
 
 instance Arbitrary PrimValEnum where
-  arbitrary = genericArbitrary
+  arbitrary = elements [Plus, PrimValCPS Plus]
   shrink = genericShrink
 
 instance Arbitrary PrimTypeEnum where
@@ -93,11 +94,11 @@ hasTV n (GTVar m) = n == m
 hasTV n (Fn a b) = hasTV n a || hasTV n b
 hasTV _ _ = False
 
-highestTypeVar :: Type -> Int
-highestTypeVar (TVar n) = n
-highestTypeVar (GTVar n) = n
-highestTypeVar (Fn a b) = max (highestTypeVar a) (highestTypeVar b)
-highestTypeVar _ = -1
+maxTypeVar :: Type -> Int
+maxTypeVar (TVar n) = n
+maxTypeVar (GTVar n) = n
+maxTypeVar (Fn a b) = max (maxTypeVar a) (maxTypeVar b)
+maxTypeVar _ = -1
 
 intType :: Type
 intType = PrimT IntT

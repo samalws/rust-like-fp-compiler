@@ -11,7 +11,7 @@ import Compiler.Types
 addVar :: Map String Int -> String -> Map String Int
 addVar m v = insert v 0 $ (+ 1) <$> m
 
-keywords = [ "let", "in" ]
+keywords = [ "let", "in", "succ" ]
 
 varParser :: Parser String
 varParser = do
@@ -58,7 +58,7 @@ letParser m = do
   b <- exprParser' (addVar m v)
   pure $ let' a b
 
-primValParser = char '+' >> pure (primVal Plus)
+primValParser = try (char '+' >> pure (primVal Plus)) <|> try (string "succ" >> pure (primVal Succ))
 
 parenParser m = char '(' >> spaces >> exprParser' m <* spaces <* char ')'
 
