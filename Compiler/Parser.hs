@@ -58,7 +58,13 @@ letParser m = do
   b <- exprParser' (addVar m v)
   pure $ let' a b
 
-primValParser = try (char '+' >> pure (primVal Plus)) <|> try (string "succ" >> pure (primVal Succ))
+addParser m = do
+  a <- try (subExprParser m) <|> try (appParser m)
+  many1 space
+  char '+'
+  many1 space
+  b <- exprParser' m
+  pure $ primOp Plus [a,b]
 
 parenParser m = char '(' >> spaces >> exprParser' m <* spaces <* char ')'
 
@@ -67,11 +73,10 @@ subExprParser m =     try (evar <$> varParser' m)
                   <|> try (absParser m)
                   <|> try (primInt <$> int)
                   <|> try (letParser m)
-                  <|> try primValParser
                   <|> try (parenParser m)
 
 exprParser' :: Map String Int -> Parser (Expr ())
-exprParser' m = try (appParser m) <|> try (subExprParser m)
+exprParser' m = try (addParser m) <|> try (appParser m) <|> try (subExprParser m)
 
 exprParser :: Parser (Expr ())
 exprParser = exprParser' empty

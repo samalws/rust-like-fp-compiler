@@ -11,13 +11,13 @@ import Data.Maybe (maybe, isJust)
 import Control.Monad.State (StateT, runStateT, gets, modify)
 
 -- type argument on Abs may not have any GTVars
-data PrimValEnum = Succ | Plus | PrimValCPS PrimValEnum   deriving (Show, Eq, Generic)
+data PrimOpEnum = Plus   deriving (Show, Eq, Generic)
 data PrimTypeEnum = IntT   deriving (Show, Eq, Generic)
-data Expr a = EVar Int a | App (Expr a) (Expr a) a | Abs (Maybe Type) (Expr a) a | Let (Expr a) (Expr a) a | PrimInt Integer a | PrimVal PrimValEnum a  deriving (Show, Eq, Functor, Generic)
+data Expr a = EVar Int a | App (Expr a) (Expr a) a | Abs (Maybe Type) (Expr a) a | Let (Expr a) (Expr a) a | PrimInt Integer a | PrimOp PrimOpEnum [Expr a] a  deriving (Show, Eq, Functor, Generic)
 data Type = PrimT PrimTypeEnum | Fn Type Type | TVar Int | GTVar Int   deriving (Show, Eq, Generic)
 
-instance Arbitrary PrimValEnum where
-  arbitrary = elements [Plus, PrimValCPS Plus]
+instance Arbitrary PrimOpEnum where
+  arbitrary = genericArbitrary
   shrink = genericShrink
 
 instance Arbitrary PrimTypeEnum where
@@ -38,15 +38,15 @@ abs t a = Abs t a ()
 abs' = abs Nothing
 let' a b = Let a b ()
 primInt n = PrimInt n ()
-primVal s = PrimVal s ()
+primOp s e = PrimOp s e ()
 
 exprVal :: Expr a -> a
-exprVal (EVar    _ q) = q
-exprVal (App   _ _ q) = q
-exprVal (Abs   _ _ q) = q
-exprVal (Let   _ _ q) = q
-exprVal (PrimInt _ q) = q
-exprVal (PrimVal _ q) = q
+exprVal (EVar     _ q) = q
+exprVal (App    _ _ q) = q
+exprVal (Abs    _ _ q) = q
+exprVal (Let    _ _ q) = q
+exprVal (PrimInt  _ q) = q
+exprVal (PrimOp _ _ q) = q
 
 validAbsType :: Type -> Bool
 validAbsType (PrimT _) = True
@@ -59,7 +59,7 @@ validExpr' n (App a b ()) = validExpr' n a && validExpr' n b
 validExpr' n (Abs t a ()) = maybe True validAbsType t && validExpr' (n+1) a
 validExpr' n (Let a b ()) = validExpr' n a && validExpr' (n+1) b
 validExpr' n (PrimInt _ ()) = True
-validExpr' n (PrimVal _ ()) = True
+validExpr' n (PrimOp Plus l ()) = length l == 2 && all (validExpr' n) l
 
 validExpr :: Expr () -> Bool
 validExpr = validExpr' 0
@@ -69,6 +69,7 @@ incVars n (EVar m q) | m >= n = EVar (m+1) q
 incVars n (App x y q) = App (incVars n x) (incVars n y) q
 incVars n (Abs t x q) = Abs t (incVars (n+1) x) q
 incVars n (Let x y q) = Let (incVars n x) (incVars (n+1) y) q
+incVars n (PrimOp a l q) = PrimOp a (incVars n <$> l) q
 incVars n x = x
 
 replaceVar :: Int -> Expr a -> Expr a -> Expr a
@@ -77,6 +78,7 @@ replaceVar m a (EVar n q) | m < n = EVar (n-1) q
 replaceVar m a (App x y q) = App (replaceVar m a x) (replaceVar m a y) q
 replaceVar m a (Abs t x q) = Abs t (replaceVar (m+1) (incVars 0 a) x) q
 replaceVar m a (Let x y q) = Let (replaceVar m a x) (replaceVar (m+1) (incVars 0 a) y) q
+replaceVar m a (PrimOp o l q) = PrimOp o (replaceVar m a <$> l) q
 replaceVar _ _ x = x
 
 replaceType :: Int -> Type -> Type -> Type

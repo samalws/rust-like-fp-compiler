@@ -72,11 +72,6 @@ typeToCPS (Fn a b) = do
   pure $ Fn a' (Fn (Fn b' v) v)
 typeToCPS t = pure t
 
-primValType :: PrimValEnum -> State (a, Int) Type
-primValType Succ = pure $ Fn intType intType
-primValType Plus = pure $ Fn intType (Fn intType intType)
-primValType (PrimValCPS a) = primValType a >>= typeToCPS
-
 -- note: GTVars never get added to the constraint set
 gather :: [Type] -> Expr () -> State ([(Type, Type)], Int) (Expr Type)
 gather env (EVar n ()) = instantiate (env !! n) >>= pure . (EVar n)
@@ -98,7 +93,13 @@ gather env (Let a b ()) = do
   gb <- gather ((exprVal ga):env) b
   pure $ Let ga gb $ exprVal gb
 gather env (PrimInt n ()) = pure $ PrimInt n intType
-gather env (PrimVal a ()) = PrimVal a <$> primValType a
+gather env (PrimOp Plus [a,b] ()) = do
+  ga <- gather env a
+  gb <- gather env b
+  let (ta, tb) = both exprVal (ga, gb)
+  addConstr (ta, intType)
+  addConstr (tb, intType)
+  pure $ PrimOp Plus [ga, gb] intType
 
 runGather :: Expr () -> (Expr Type, [(Type, Type)])
 runGather = second fst . flip runState ([], 0) . gather []
