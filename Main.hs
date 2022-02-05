@@ -2,11 +2,13 @@ import Prelude hiding (abs)
 import Text.Parsec
 import Text.Parsec.String
 import Compiler.Types
-import Compiler.Tests
+import Compiler.BetaReduce
 import Compiler.HM
 import Compiler.ANF
 import Compiler.CPS
 import Compiler.Parser
+import Compiler.Printer
+import Compiler.Tests
 
 main = do
   contents <- parseFromFile exprFileParser "input.txt"

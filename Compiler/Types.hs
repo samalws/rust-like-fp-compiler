@@ -74,7 +74,7 @@ validAbsType _ = False -- TODO what abt type variables?
 
 goodNumArgs :: PrimOpEnum -> Int -> Bool
 goodNumArgs Plus n = n == 2
-goodNumArgs Tup  n = True
+goodNumArgs Tup  n = n > 1
 goodNumArgs IfZ  n = n == 3
 
 validExpr' :: Int -> Expr () -> Bool

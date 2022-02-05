@@ -11,11 +11,13 @@ import Compiler.Types
 addVar :: Map String Int -> String -> Map String Int
 addVar m v = insert v 0 $ (+ 1) <$> m
 
-keywords = [ "let", "in", "succ" ]
+keywords = [ "let", "in", "ifz" ]
 
 varParser :: Parser String
 varParser = do
-  v <- many1 letter
+  v0 <- letter
+  v1 <- many (letter <|> digit)
+  let v = v0:v1
   if (elem v keywords)
     then fail ("Unexpected keyword " <> v)
     else pure v
@@ -66,6 +68,18 @@ addParser m = do
   b <- exprParser' m
   pure $ primOp Plus [a,b]
 
+ifzParser m = do
+  string "ifz"
+  many1 space
+  a <- subExprParser m
+  many1 space
+  b <- subExprParser m
+  many1 space
+  c <- subExprParser m
+  pure $ primOp IfZ [a,b,c]
+
+tupParser m = primOp Tup <$> (char '(' >> spaces >> mySepBy1 (exprParser' m) (spaces >> char ',' >> spaces) <* char ')')
+
 parenParser m = char '(' >> spaces >> exprParser' m <* spaces <* char ')'
 
 subExprParser :: Map String Int -> Parser (Expr ())
@@ -74,9 +88,10 @@ subExprParser m =     try (evar <$> varParser' m)
                   <|> try (primInt <$> int)
                   <|> try (letParser m)
                   <|> try (parenParser m)
+                  <|> try (tupParser m)
 
 exprParser' :: Map String Int -> Parser (Expr ())
-exprParser' m = try (addParser m) <|> try (appParser m) <|> try (subExprParser m)
+exprParser' m = try (addParser m) <|> try (ifzParser m) <|> try (appParser m) <|> try (subExprParser m)
 
 exprParser :: Parser (Expr ())
 exprParser = exprParser' empty
