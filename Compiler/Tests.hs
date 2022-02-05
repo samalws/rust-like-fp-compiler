@@ -11,9 +11,6 @@ import Compiler.CPS
 anfIdempotent :: Expr () -> Property
 anfIdempotent e = validExpr e ==> (let e' = runAnf e in runAnf e' == e')
 
-anfStaysWellTyped :: Expr () -> Property
-anfStaysWellTyped e = (validExpr e) ==> isRight (annotateExpr e) ==> isRight (annotateExpr (runAnf e))
-
 anfPreservesType :: Expr () -> Property
 anfPreservesType e = (validExpr e) ==> isRight te ==> f te tre where
   te = exprVal <$> annotateExpr e
@@ -23,4 +20,4 @@ anfPreservesType e = (validExpr e) ==> isRight te ==> f te tre where
   f _ _ = False
 
 tests :: IO ()
-tests = f anfIdempotent >> f anfStaysWellTyped >> f anfPreservesType   where f t = quickCheck (withMaxSuccess 50000 t)
+tests = f anfIdempotent >> f anfPreservesType   where f t = quickCheck (withMaxSuccess 50000 t)
