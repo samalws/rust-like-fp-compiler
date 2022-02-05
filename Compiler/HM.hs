@@ -3,7 +3,7 @@ module Compiler.HM where
 import Prelude hiding (abs)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.State (StateT, State, get, gets, put, modify, runStateT, runState)
-import Data.Tuple.Extra (first, second, both)
+import Data.Tuple.Extra (first, second, both, dupe, (***))
 import Data.Set (Set, empty, singleton, member)
 import Data.Maybe (maybe)
 import Data.Foldable (fold)
@@ -34,46 +34,18 @@ replaceTVar _ _ a = a
 replaceTVars :: [(Int, Int)] -> Type -> Type
 replaceTVars = foldr (.) id . fmap (uncurry replaceTVar)
 
--- note: every var only ever shows up as a GVTVar or a TVar, never both
-generalize :: Set Int -> Type -> Type
-generalize s (TVar n) | not (member n s) = GTVar n
-generalize s (Fn a b) = Fn (generalize s a) (generalize s b)
-generalize _ a = a
+instantiateMapVars :: Int -> (Int, Int) -> (Int, [(Int, Int)])
+instantiateMapVars n (a,b) = (n+b-a+1, f <$> [0..b-a]) where
+  f m = (a+m, n+1+m)
 
-instantiateSt :: Type -> State ([(Int, Int)], Int) Type
-instantiateSt (GTVar n) = gets fst >>= maybe f (pure . TVar) . lookup n where
-  f = do
-    v <- newTypeVarNum
-    modify $ first ((n, v):)
-    pure $ TVar v
-instantiateSt (Fn a b) = Fn <$> instantiateSt a <*> instantiateSt b
-instantiateSt a = pure a
-
-repeatedInstantiateSt :: [(Type, Type)] -> Type -> State ([(Int, Int)], Int) Type
-repeatedInstantiateSt constrs t = do
-  lengthBefore <- gets $ length . fst
-  t' <- instantiateSt t
-  mapAfter <- gets fst
-  let ldiff = length mapAfter - lengthBefore
-  if ldiff == 0
-    then pure ()
-    else do
-      -- TODO call repeatedInstantiateSt on all related variables in constrs
-      pure ()
-  pure t'
-
-instantiate :: Type -> State ([(Type, Type)], Int) Type
-instantiate t = do
-  (constrs, n) <- get
-  let (tt, (gtmap, nn)) = runState (repeatedInstantiateSt constrs t) ([], n)
-  modify (second $ const nn)
-  sequence $ f gtmap <$> constrs
-  pure tt
-  where
-    f gtmap (ta, tb) | ta' /= ta || tb' /= tb = addConstr (ta', tb') where
-      ta' = replaceTVars gtmap ta
-      tb' = replaceTVars gtmap tb
-    f _ _ = pure ()
+instantiate :: (Int,Int) -> Type -> State ([(Type, Type)], Int) Type
+instantiate r t = do
+  n <- gets snd
+  let (n', gtmap) = instantiateMapVars n r
+  modify (second $ const n')
+  constrs <- gets fst
+  sequence $ fmap (addConstr . snd) $ filter (uncurry (/=)) $ fmap ((id *** both (replaceTVars gtmap)) . dupe) constrs
+  pure $ replaceTVars gtmap t
 
 -- do not use for anything except for prim vals; breaks on weird edge cases
 typeToCPS :: Type -> State (a, Int) Type
@@ -85,8 +57,8 @@ typeToCPS (Fn a b) = do
 typeToCPS t = pure t
 
 -- note: GTVars never get added to the constraint set
-gather :: [Type] -> Expr () -> State ([(Type, Type)], Int) (Expr Type)
-gather env (EVar n ()) = instantiate (env !! n) >>= pure . (EVar n)
+gather :: [((Int,Int),Type)] -> Expr () -> State ([(Type, Type)], Int) (Expr Type)
+gather env (EVar n ()) = uncurry instantiate (env !! n) >>= pure . (EVar n)
 gather env (App a b ()) = do
   ga <- gather env a
   gb <- gather env b
@@ -96,13 +68,14 @@ gather env (App a b ()) = do
   pure $ App ga gb v
 gather env (Abs tv a ()) = do
   v <- maybe newTypeVar pure tv
-  g <- gather (v:env) a
+  g <- gather (((1,0),v):env) a
   let t = exprVal g
   pure $ Abs tv g $ Fn v t
 gather env (Let a b ()) = do
-  ga0 <- gather env a
-  let ga = generalize (freeTVarsEnv env) <$> ga0
-  gb <- gather ((exprVal ga):env) b
+  n <- gets snd
+  ga <- gather env a
+  n' <- gets snd
+  gb <- gather (((n+1,n'),exprVal ga):env) b
   pure $ Let ga gb $ exprVal gb
 gather env (PrimInt n ()) = pure $ PrimInt n intType
 gather env (PrimOp Plus [a,b] ()) = do

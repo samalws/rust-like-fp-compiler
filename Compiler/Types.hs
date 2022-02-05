@@ -10,11 +10,10 @@ import Control.Monad (mzero)
 import Data.Maybe (maybe, isJust)
 import Control.Monad.State (StateT, runStateT, gets, modify)
 
--- type argument on Abs may not have any GTVars
 data PrimOpEnum = Plus   deriving (Show, Eq, Generic)
 data PrimTypeEnum = IntT   deriving (Show, Eq, Generic)
 data Expr a = EVar Int a | App (Expr a) (Expr a) a | Abs (Maybe Type) (Expr a) a | Let (Expr a) (Expr a) a | PrimInt Integer a | PrimOp PrimOpEnum [Expr a] a  deriving (Show, Eq, Functor, Generic)
-data Type = PrimT PrimTypeEnum | Fn Type Type | TVar Int | GTVar Int   deriving (Show, Eq, Generic)
+data Type = PrimT PrimTypeEnum | Fn Type Type | TVar Int   deriving (Show, Eq, Generic)
 
 instance Arbitrary PrimOpEnum where
   arbitrary = genericArbitrary
@@ -24,12 +23,12 @@ instance Arbitrary PrimTypeEnum where
   arbitrary = genericArbitrary
   shrink = genericShrink
 
-genArbExpr :: (Arbitrary a) => Int -> Gen (Expr a)
-genArbExpr n | n > 3 = oneof [
+genArbExpr :: (Arbitrary a) => Int -> Int -> Gen (Expr a)
+genArbExpr n m | m > 5 = oneof [
     EVar <$> chooseInt (0,n-1) <*> arbitrary,
     PrimInt <$> arbitrary <*> arbitrary
   ]
-genArbExpr n = oneof [
+genArbExpr n m = oneof [
     EVar <$> chooseInt (0,n-1) <*> arbitrary,
     App <$> gaen <*> gaen <*> arbitrary,
     Abs Nothing {- TODO -} <$> gaen1 <*> arbitrary,
@@ -38,11 +37,11 @@ genArbExpr n = oneof [
     (\a b -> PrimOp Plus [a,b]) <$> gaen <*> gaen <*> arbitrary
   ]
   where
-    gaen  = genArbExpr n
-    gaen1 = genArbExpr (n+1)
+    gaen  = genArbExpr n     (m+1)
+    gaen1 = genArbExpr (n+1) (m+1)
 
 instance (Arbitrary a) => Arbitrary (Expr a) where
-  arbitrary = genArbExpr 0
+  arbitrary = genArbExpr 0 0
   shrink = genericShrink
 
 instance Arbitrary Type where
@@ -109,13 +108,11 @@ replaceTypes = foldr (.) id . fmap (uncurry replaceType)
 
 hasTV :: Int -> Type -> Bool
 hasTV n (TVar m) = n == m
-hasTV n (GTVar m) = n == m
 hasTV n (Fn a b) = hasTV n a || hasTV n b
 hasTV _ _ = False
 
 maxTypeVar :: Type -> Int
 maxTypeVar (TVar n) = n
-maxTypeVar (GTVar n) = n
 maxTypeVar (Fn a b) = max (maxTypeVar a) (maxTypeVar b)
 maxTypeVar _ = -1
 
@@ -123,7 +120,6 @@ intType :: Type
 intType = PrimT IntT
 
 typesAlphaEquiv :: Type -> Type -> StateT [(Int, Int)] Maybe ()
-typesAlphaEquiv (GTVar n) (GTVar m) = typesAlphaEquiv (TVar n) (TVar m)
 typesAlphaEquiv (TVar n) (TVar m) = do
   s <- gets $ lookup n
   maybe tryAddVar checkVar s
