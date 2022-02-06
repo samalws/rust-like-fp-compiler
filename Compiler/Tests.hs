@@ -39,6 +39,8 @@ cpsBaseEvalPreserved e = validExpr e ==> (exprVal <$> annotateExpr e) == Right i
 cpsPreservesWellTypedLetless e = validExpr e ==> isRight (annotateExpr e') ==> isRight (annotateExpr $ anfWrapCps $ runAnf e') where
   e' = betaReduce (normalBetaReduceSettings { reduceApp = False }) e
 
+cpsPreservesWellTyped e = validExpr e ==> isRight (annotateExpr e) ==> isRight (annotateExpr $ anfWrapCps $ runAnf e)
+
 tests :: IO ()
 tests = do
   quickCheckWith stdArgs { maxSize = 5, maxSuccess =  1000 } $ printParseTest
@@ -50,3 +52,6 @@ tests = do
   quickCheckWith stdArgs { maxSize = 5, maxSuccess = 50000 } $ baseEvalInt
   quickCheckWith stdArgs { maxSize = 5, maxSuccess = 50000 } $ cpsBaseEvalPreserved
   quickCheckWith stdArgs { maxSize = 5, maxSuccess = 50000 } $ cpsPreservesWellTypedLetless
+
+shouldFailTests :: IO ()
+shouldFailTests = (sequence $ flip fmap [8..15] $ (\n -> quickCheckWith stdArgs { maxSize = n, maxSuccess = 20000 } $ cpsPreservesWellTyped)) >> pure ()

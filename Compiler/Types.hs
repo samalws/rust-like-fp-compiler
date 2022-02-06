@@ -3,7 +3,7 @@
 module Compiler.Types where
 
 import Prelude hiding (abs)
-import Test.QuickCheck (Gen, getSize, elements, oneof, chooseInt)
+import Test.QuickCheck (Gen, getSize, elements, oneof, chooseInt, chooseInteger)
 import Test.QuickCheck.Arbitrary.Generic (Arbitrary, arbitrary, shrink, genericArbitrary, genericShrink)
 import GHC.Generics (Generic)
 import Control.Monad (mzero)
@@ -24,9 +24,9 @@ instance Arbitrary PrimTypeEnum where
   shrink = genericShrink
 
 genArbExpr :: (Arbitrary a) => Int -> Int -> Gen (Expr a)
-genArbExpr n m | m > 5 = oneof [
+genArbExpr n m | m <= 0 = oneof [
     EVar <$> chooseInt (0,n-1) <*> arbitrary,
-    PrimInt <$> arbitrary <*> arbitrary
+    PrimInt <$> chooseInteger (0, 99999)  <*> arbitrary
   ]
 genArbExpr n m = oneof [
     EVar <$> chooseInt (0,n-1) <*> arbitrary,
@@ -35,12 +35,12 @@ genArbExpr n m = oneof [
     Let <$> gaen <*> gaen1 <*> arbitrary,
     PrimInt <$> arbitrary <*> arbitrary,
     (\a b -> PrimOp Plus [a,b]) <$> gaen <*> gaen <*> arbitrary,
-    (\a b -> PrimOp Tup [a,b]) <$> gaen <*> gaen <*> arbitrary,
-    (\a b c -> PrimOp IfZ [a,b,c]) <$> gaen <*> gaen <*> gaen <*> arbitrary
+    (\a b c -> PrimOp IfZ [a,b,c]) <$> gaen <*> gaen <*> gaen <*> arbitrary,
+    chooseInt (2, min 2 m) >>= (\n -> PrimOp Tup <$> sequence (replicate n gaen) <*> arbitrary)
   ]
   where
-    gaen  = genArbExpr n     (m+1)
-    gaen1 = genArbExpr (n+1) (m+1)
+    gaen  = genArbExpr n     (m-1)
+    gaen1 = genArbExpr (n+1) (m-1)
 
 instance (Arbitrary a) => Arbitrary (Expr a) where
   arbitrary = getSize >>= genArbExpr 0
