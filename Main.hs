@@ -11,6 +11,7 @@ import Compiler.Printer
 import Compiler.Tests
 
 main = do
+  tests
   contents <- parseFromFile exprFileParser "input.txt"
   case contents of
     Left e -> print e
