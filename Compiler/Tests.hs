@@ -12,30 +12,41 @@ import Compiler.CPS
 import Compiler.Parser
 import Compiler.Printer
 
-fnPreservesWellTyped :: (Expr () -> Expr ()) -> Expr () -> Property
-fnPreservesWellTyped g e = validExpr e ==> isRight (annotateExpr e) ==> isRight (annotateExpr $ g e)
+printParseTest e = validExpr e ==> (Right e == (parse exprFileParser "" $ printExpr e))
 
-fnPreservesType :: (Expr () -> Expr ()) -> Expr () -> Property
-fnPreservesType g e = validExpr e ==> isRight te ==> f te tre where
+betaReducePreservesWellTyped e = validExpr e ==> isRight (annotateExpr e) ==> isRight (annotateExpr $ betaReduceNormal e)
+
+betaReduceNoLetPreservesWellTyped e = validExpr e ==> isRight (annotateExpr e) ==> isRight (annotateExpr $ betaReduce (normalBetaReduceSettings { reduceLet = False }) e)
+
+anfIdempotent e = validExpr e ==> isRight (annotateExpr e) ==> (let e' = runAnf e in runAnf e' == e')
+
+anfPreservesType e = validExpr e ==> isRight te ==> f te tre where
   te = exprVal <$> annotateExpr e
-  tre = exprVal <$> annotateExpr (g e)
-  f (Left _) (Left _) = True
+  tre = exprVal <$> annotateExpr (runAnf e)
   f (Right a) (Right b) = runTypesAlphaEquiv a b
   f _ _ = False
 
-fnPreservesEval :: (Expr () -> Expr ()) -> Expr () -> Property
-fnPreservesEval g e = validExpr e ==> isRight (annotateExpr e) ==> betaReduce e == betaReduce (g e)
+anfPreservesEval e = validExpr e ==> isRight (annotateExpr e) ==> betaReduceNormal e == betaReduceNormal (runAnf e)
 
-fnIdempotent :: (Expr () -> Expr ()) -> Expr () -> Property
-fnIdempotent g e = validExpr e ==> isRight (annotateExpr e) ==> (let e' = g e in g e' == e')
+baseEvalInt e = validExpr e ==> (exprVal <$> annotateExpr e) == Right intType ==> f (betaReduceNormal e) where
+  f (PrimInt _ _) = True
+  f _ = False
 
-printParseTest :: Expr () -> Property
-printParseTest e = validExpr e ==> (Right e == (parse exprFileParser "" $ printExpr e))
+cpsBaseEvalPreserved e = validExpr e ==> (exprVal <$> annotateExpr e) == Right intType ==> betaReduceNormal e == betaReduceNormal (app (anfWrapCps $ runAnf e) (abs' (evar 0)))
+
+-- something kinda scary: without eliminating lets there should be a counterexample: let a = (\x. \y. 5) 6 in a a
+--    but quickcheck doesn't find that counterexample at the moment
+cpsPreservesWellTypedLetless e = validExpr e ==> isRight (annotateExpr e') ==> isRight (annotateExpr $ anfWrapCps $ runAnf e') where
+  e' = betaReduce (normalBetaReduceSettings { reduceApp = False }) e
 
 tests :: IO ()
 tests = do
   quickCheck $ withMaxSuccess  1000 $ printParseTest
-  quickCheck $ withMaxSuccess 50000 $ fnPreservesWellTyped betaReduce
-  quickCheck $ withMaxSuccess 50000 $ fnIdempotent runAnf
-  quickCheck $ withMaxSuccess 50000 $ fnPreservesType runAnf
-  quickCheck $ withMaxSuccess 50000 $ fnPreservesEval runAnf
+  quickCheck $ withMaxSuccess 50000 $ betaReducePreservesWellTyped
+  quickCheck $ withMaxSuccess 50000 $ betaReduceNoLetPreservesWellTyped
+  quickCheck $ withMaxSuccess 50000 $ anfIdempotent
+  quickCheck $ withMaxSuccess 50000 $ anfPreservesType
+  quickCheck $ withMaxSuccess 50000 $ anfPreservesEval
+  quickCheck $ withMaxSuccess 50000 $ baseEvalInt
+  quickCheck $ withMaxSuccess 50000 $ cpsBaseEvalPreserved
+  quickCheck $ withMaxSuccess 50000 $ cpsPreservesWellTypedLetless
