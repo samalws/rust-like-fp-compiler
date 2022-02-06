@@ -18,7 +18,7 @@ varParser = do
   v0 <- letter
   v1 <- many (letter <|> digit)
   let v = v0:v1
-  if (elem v keywords)
+  if v `elem` keywords
     then fail ("Unexpected keyword " <> v)
     else pure v
 

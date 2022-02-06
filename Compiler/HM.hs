@@ -25,7 +25,7 @@ freeTVars (TupT l) = fold $ freeTVars <$> l
 freeTVars _ = empty
 
 freeTVarsEnv :: [Type] -> Set Int
-freeTVarsEnv = fold . fmap freeTVars
+freeTVarsEnv = foldMap freeTVars
 
 replaceTVar :: Int -> Int -> Type -> Type
 replaceTVar n m (TVar p) | p == n = TVar m
@@ -46,12 +46,12 @@ instantiate r t = do
   let (n', gtmap) = instantiateMapVars n r
   modify (second $ const n')
   constrs <- gets fst
-  sequence $ fmap (addConstr . snd) $ filter (uncurry (/=)) $ fmap ((id *** both (replaceTVars gtmap)) . dupe) constrs
+  mapM_ (addConstr . snd) $ filter (uncurry (/=)) $ fmap (second (both $ replaceTVars gtmap) . dupe) constrs
   pure $ replaceTVars gtmap t
 
 -- note: GTVars never get added to the constraint set
 gather :: [((Int,Int),Type)] -> Expr () -> State ([(Type, Type)], Int) (Expr Type)
-gather env (EVar n ()) = uncurry instantiate (env !! n) >>= pure . (EVar n)
+gather env (EVar n ()) = EVar n <$> uncurry instantiate (env !! n)
 gather env (App a b ()) = do
   ga <- gather env a
   gb <- gather env b

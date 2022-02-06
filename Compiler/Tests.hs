@@ -12,7 +12,7 @@ import Compiler.CPS
 import Compiler.Parser
 import Compiler.Printer
 
-printParseTest e = validExpr e ==> (Right e == (parse exprFileParser "" $ printExpr e))
+printParseTest e = validExpr e ==> (Right e == parse exprFileParser "" (printExpr e))
 
 betaReducePreservesWellTyped e = validExpr e ==> isRight (annotateExpr e) ==> isRight (annotateExpr $ betaReduceNormal e)
 
@@ -43,15 +43,15 @@ cpsPreservesWellTyped e = validExpr e ==> isRight (annotateExpr e) ==> isRight (
 
 tests :: IO ()
 tests = do
-  quickCheckWith stdArgs { maxSize = 5, maxSuccess =  1000 } $ printParseTest
-  quickCheckWith stdArgs { maxSize = 5, maxSuccess = 50000 } $ betaReducePreservesWellTyped
-  quickCheckWith stdArgs { maxSize = 5, maxSuccess = 50000 } $ betaReduceNoLetPreservesWellTyped
-  quickCheckWith stdArgs { maxSize = 5, maxSuccess = 50000 } $ anfIdempotent
-  quickCheckWith stdArgs { maxSize = 5, maxSuccess = 50000 } $ anfPreservesType
-  quickCheckWith stdArgs { maxSize = 5, maxSuccess = 50000 } $ anfPreservesEval
-  quickCheckWith stdArgs { maxSize = 5, maxSuccess = 50000 } $ baseEvalInt
-  quickCheckWith stdArgs { maxSize = 5, maxSuccess = 50000 } $ cpsBaseEvalPreserved
-  quickCheckWith stdArgs { maxSize = 5, maxSuccess = 50000 } $ cpsPreservesWellTypedLetless
+  quickCheckWith stdArgs { maxSize = 5, maxSuccess =  1000 } printParseTest
+  quickCheckWith stdArgs { maxSize = 5, maxSuccess = 50000 } betaReducePreservesWellTyped
+  quickCheckWith stdArgs { maxSize = 5, maxSuccess = 50000 } betaReduceNoLetPreservesWellTyped
+  quickCheckWith stdArgs { maxSize = 5, maxSuccess = 50000 } anfIdempotent
+  quickCheckWith stdArgs { maxSize = 5, maxSuccess = 50000 } anfPreservesType
+  quickCheckWith stdArgs { maxSize = 5, maxSuccess = 50000 } anfPreservesEval
+  quickCheckWith stdArgs { maxSize = 5, maxSuccess = 50000 } baseEvalInt
+  quickCheckWith stdArgs { maxSize = 5, maxSuccess = 50000 } cpsBaseEvalPreserved
+  quickCheckWith stdArgs { maxSize = 5, maxSuccess = 50000 } cpsPreservesWellTypedLetless
 
 shouldFailTests :: IO ()
-shouldFailTests = (sequence $ flip fmap [8..15] $ (\n -> quickCheckWith stdArgs { maxSize = n, maxSuccess = 20000 } $ cpsPreservesWellTyped)) >> pure ()
+shouldFailTests = mapM_ (\n -> quickCheckWith stdArgs { maxSize = n, maxSuccess = 20000 } cpsPreservesWellTyped) [8..15]

@@ -6,7 +6,7 @@ import Prelude hiding (abs)
 import Test.QuickCheck (Gen, getSize, elements, oneof, chooseInt, chooseInteger)
 import Test.QuickCheck.Arbitrary.Generic (Arbitrary, arbitrary, shrink, genericArbitrary, genericShrink)
 import GHC.Generics (Generic)
-import Control.Monad (mzero)
+import Control.Monad (mzero, replicateM)
 import Data.Maybe (maybe, isJust)
 import Control.Monad.State (StateT, runStateT, gets, modify)
 
@@ -36,7 +36,7 @@ genArbExpr n m = oneof [
     PrimInt <$> arbitrary <*> arbitrary,
     (\a b -> PrimOp Plus [a,b]) <$> gaen <*> gaen <*> arbitrary,
     (\a b c -> PrimOp IfZ [a,b,c]) <$> gaen <*> gaen <*> gaen <*> arbitrary,
-    chooseInt (2, min 2 m) >>= (\n -> PrimOp Tup <$> sequence (replicate n gaen) <*> arbitrary)
+    chooseInt (2, min 2 m) >>= (\n -> PrimOp Tup <$> replicateM n gaen <*> arbitrary)
   ]
   where
     gaen  = genArbExpr n     (m-1)
@@ -142,7 +142,7 @@ typesAlphaEquiv (TVar n) (TVar m) = do
     checkVar b = if b == m then pure () else mzero
 typesAlphaEquiv (Fn a b) (Fn c d) = typesAlphaEquiv a c >> typesAlphaEquiv b d
 typesAlphaEquiv (PrimT a) (PrimT b) = if a == b then pure () else mzero
-typesAlphaEquiv (TupT a) (TupT b) = if length a /= length b then mzero else (sequence $ uncurry typesAlphaEquiv <$> zip a b) >> pure ()
+typesAlphaEquiv (TupT a) (TupT b) = if length a /= length b then mzero else sequence_ (uncurry typesAlphaEquiv <$> zip a b)
 typesAlphaEquiv _ _ = mzero
 
 runTypesAlphaEquiv :: Type -> Type -> Bool
