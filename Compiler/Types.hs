@@ -36,7 +36,7 @@ genArbExpr n m = oneof [
     PrimInt <$> arbitrary <*> arbitrary,
     (\a b -> PrimOp Plus [a,b]) <$> gaen <*> gaen <*> arbitrary,
     (\a b c -> PrimOp IfZ [a,b,c]) <$> gaen <*> gaen <*> gaen <*> arbitrary,
-    chooseInt (2, min 2 m) >>= (\n -> PrimOp Tup <$> replicateM n gaen <*> arbitrary)
+    chooseInt (2, min 5 m) >>= (\n -> PrimOp Tup <$> replicateM n gaen <*> arbitrary)
   ]
   where
     gaen  = genArbExpr n     (m-1)
