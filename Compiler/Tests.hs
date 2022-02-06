@@ -1,7 +1,7 @@
 module Compiler.Tests where
 
 import Prelude hiding (abs)
-import Test.QuickCheck (quickCheck, withMaxSuccess, (==>), Property)
+import Test.QuickCheck (quickCheckWith, stdArgs, maxSuccess, maxSize, (==>), Property)
 import Data.Either (isRight)
 import Text.Parsec (parse)
 import Compiler.Types
@@ -41,12 +41,12 @@ cpsPreservesWellTypedLetless e = validExpr e ==> isRight (annotateExpr e') ==> i
 
 tests :: IO ()
 tests = do
-  quickCheck $ withMaxSuccess  1000 $ printParseTest
-  quickCheck $ withMaxSuccess 50000 $ betaReducePreservesWellTyped
-  quickCheck $ withMaxSuccess 50000 $ betaReduceNoLetPreservesWellTyped
-  quickCheck $ withMaxSuccess 50000 $ anfIdempotent
-  quickCheck $ withMaxSuccess 50000 $ anfPreservesType
-  quickCheck $ withMaxSuccess 50000 $ anfPreservesEval
-  quickCheck $ withMaxSuccess 50000 $ baseEvalInt
-  quickCheck $ withMaxSuccess 50000 $ cpsBaseEvalPreserved
-  quickCheck $ withMaxSuccess 50000 $ cpsPreservesWellTypedLetless
+  quickCheckWith stdArgs { maxSize = 5, maxSuccess =  1000 } $ printParseTest
+  quickCheckWith stdArgs { maxSize = 5, maxSuccess = 50000 } $ betaReducePreservesWellTyped
+  quickCheckWith stdArgs { maxSize = 5, maxSuccess = 50000 } $ betaReduceNoLetPreservesWellTyped
+  quickCheckWith stdArgs { maxSize = 5, maxSuccess = 50000 } $ anfIdempotent
+  quickCheckWith stdArgs { maxSize = 5, maxSuccess = 50000 } $ anfPreservesType
+  quickCheckWith stdArgs { maxSize = 5, maxSuccess = 50000 } $ anfPreservesEval
+  quickCheckWith stdArgs { maxSize = 5, maxSuccess = 50000 } $ baseEvalInt
+  quickCheckWith stdArgs { maxSize = 5, maxSuccess = 50000 } $ cpsBaseEvalPreserved
+  quickCheckWith stdArgs { maxSize = 5, maxSuccess = 50000 } $ cpsPreservesWellTypedLetless

@@ -3,7 +3,7 @@
 module Compiler.Types where
 
 import Prelude hiding (abs)
-import Test.QuickCheck (Gen, elements, oneof, chooseInt)
+import Test.QuickCheck (Gen, getSize, elements, oneof, chooseInt)
 import Test.QuickCheck.Arbitrary.Generic (Arbitrary, arbitrary, shrink, genericArbitrary, genericShrink)
 import GHC.Generics (Generic)
 import Control.Monad (mzero)
@@ -43,7 +43,7 @@ genArbExpr n m = oneof [
     gaen1 = genArbExpr (n+1) (m+1)
 
 instance (Arbitrary a) => Arbitrary (Expr a) where
-  arbitrary = genArbExpr 0 0
+  arbitrary = getSize >>= genArbExpr 0
   shrink = genericShrink
 
 instance Arbitrary Type where
