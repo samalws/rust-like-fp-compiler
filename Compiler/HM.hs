@@ -50,37 +50,45 @@ instantiate r t = do
   mapM_ (addConstr . snd) $ filter (uncurry (/=)) $ fmap (second (both $ replaceTVars gtmap) . dupe) constrs
   pure $ replaceTVars gtmap t
 
+instantiateFn :: Type -> State (a, Int) Type
+instantiateFn t = do
+  n <- gets snd
+  let (n', gtmap) = instantiateMapVars n (0,maxTypeVar t)
+  modify (second $ const n')
+  pure $ replaceTVars gtmap t
+
 -- note: GTVars never get added to the constraint set
-gather :: [((Int,Int),Type)] -> Expr () -> State ([(Type, Type)], Int) (Expr Type)
-gather env (EVar n ()) = EVar n <$> uncurry instantiate (env !! n)
-gather env (App a b ()) = do
-  ga <- gather env a
-  gb <- gather env b
+gather :: [Type] -> [((Int,Int),Type)] -> Expr () -> State ([(Type, Type)], Int) (Expr Type)
+gather fns env (EVar n ()) = EVar n <$> uncurry instantiate (env !! n)
+gather fns env (App a b ()) = do
+  ga <- gather fns env a
+  gb <- gather fns env b
   v  <- newTypeVar
   let (ta, tb) = (exprVal ga, exprVal gb)
   addConstr (ta, Fn tb v)
   pure $ App ga gb v
-gather env (Abs tv a ()) = do
+gather fns env (Abs tv a ()) = do
   v <- maybe newTypeVar pure tv
-  g <- gather (((1,0),v):env) a
+  g <- gather fns (((1,0),v):env) a
   let t = exprVal g
   pure $ Abs tv g $ Fn v t
-gather env (Let a b ()) = do
+gather fns env (Let a b ()) = do
   n <- gets snd
-  ga <- gather env a
+  ga <- gather fns env a
   n' <- gets snd
-  gb <- gather (((n+1,n'),exprVal ga):env) b
+  gb <- gather fns (((n+1,n'),exprVal ga):env) b
   pure $ Let ga gb $ exprVal gb
-gather env (PrimInt n ()) = pure $ PrimInt n intType
-gather env (TupAccess n m a ()) = do
-  ga <- gather env a
+gather fns env (PrimInt n ()) = pure $ PrimInt n intType
+gather fns env (TupAccess n m a ()) = do
+  ga <- gather fns env a
   let ta = exprVal ga
   vs <- replicateM m newTypeVar
   addConstr (TupT vs, ta)
   pure $ TupAccess n m ga (vs !! n)
-gather env (PrimOp o l ()) = do
-  gl <- sequence $ gather env <$> l
+gather fns env (PrimOp o l ()) = do
+  gl <- sequence $ gather fns env <$> l
   PrimOp o gl <$> primOpType o (exprVal <$> gl)
+gather fns env (FnVal m ()) = FnVal m <$> instantiateFn (fns !! m)
 
 primOpType :: PrimOpEnum -> [Type] -> State ([(Type, Type)], Int) Type
 primOpType Plus [ta,tb] = do
@@ -93,8 +101,8 @@ primOpType IfZ [ta, tb, tc] = do
   addConstr (tb, tc)
   pure tb
 
-runGather :: Expr () -> (Expr Type, [(Type, Type)])
-runGather = second fst . flip runState ([], 0) . gather []
+runGather :: Int -> [Type] -> Expr () -> (Expr Type, [(Type, Type)])
+runGather n fns = second fst . flip runState ([], n) . gather fns []
 
 addUnify :: (Monad m) => (Int, Type) -> StateT [(Int, Type)] m ()
 addUnify a = modify (a:)
@@ -120,6 +128,15 @@ runUnify t = snd <$> runStateT (unify t) []
 
 annotateExpr :: Expr () -> Either String (Expr Type)
 annotateExpr e = do
-  let (ge, tt) = runGather e
+  let (ge, tt) = runGather 0 [] e
   solved <- runUnify tt
   pure $ replaceTypes solved <$> ge
+
+annotateCode :: [Type] -> Code () -> Either String (Code Type)
+annotateCode ts (Code []) = pure (Code [])
+annotateCode ts (Code ((t,e):r)) = do
+  let (ge, tt) = runGather (maxTypeVar t + 1) ts e
+  let te = exprVal ge
+  solved <- runUnify ((te,t):tt) -- TODO right order?
+  Code r' <- annotateCode (ts <> [te]) $ Code r
+  pure $ Code $ (t,replaceTypes solved <$> ge):r'

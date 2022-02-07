@@ -30,3 +30,9 @@ main = do
       print eee
       putStrLn "Type of CPS form:"
       print $ exprVal <$> annotateExpr eee
+      putStrLn "Original beta reduced:"
+      print $ betaReduceNormal e
+      putStrLn "ANF beta reduced:"
+      print $ betaReduceNormal ee
+      putStrLn "CPS beta reduced:"
+      print $ betaReduceNormal $ app eee (abs' (evar 0))

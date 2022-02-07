@@ -22,6 +22,10 @@ betaReduce set (PrimOp Plus [n, m] ()) = (if anythingChanged then betaReduce set
   n' = betaReduce set n
   m' = betaReduce set m
   anythingChanged = n' /= n || m' /= m
+betaReduce set (TupAccess n m (PrimOp Tup l ()) ()) | length l == m = betaReduce set (l !! n)
+betaReduce set (TupAccess n m a ()) = (if anythingChanged then betaReduce set else id) (tupAccess n m a') where
+  a' = betaReduce set a
+  anythingChanged = a' /= a
 betaReduce set (PrimOp IfZ [PrimInt n (), a, b] ()) = betaReduce set $ if n == 0 then a else b
 betaReduce set (PrimOp IfZ [n, a, b] ()) = (if nChanged then betaReduce set else id) (primOp IfZ [n', betaReduce set a, betaReduce set b]) where
   n' = betaReduce set n

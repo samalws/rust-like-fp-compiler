@@ -3,8 +3,6 @@
 module Compiler.Types where
 
 import Prelude hiding (abs)
-import Test.QuickCheck (Gen, getSize, elements, oneof, chooseInt, chooseInteger)
-import Test.QuickCheck.Arbitrary.Generic (Arbitrary, arbitrary, shrink, genericArbitrary, genericShrink)
 import GHC.Generics (Generic)
 import Control.Monad (mzero, replicateM)
 import Data.Maybe (maybe, isJust)
@@ -12,44 +10,9 @@ import Control.Monad.State (StateT, runStateT, gets, modify)
 
 data PrimOpEnum = Plus | Tup | IfZ   deriving (Show, Eq, Generic)
 data PrimTypeEnum = IntT   deriving (Show, Eq, Generic)
-data Expr a = EVar Int a | App (Expr a) (Expr a) a | Abs (Maybe Type) (Expr a) a | Let (Expr a) (Expr a) a | PrimInt Integer a | TupAccess Int Int (Expr a) a | PrimOp PrimOpEnum [Expr a] a  deriving (Show, Eq, Functor, Generic)
+data Expr a = EVar Int a | App (Expr a) (Expr a) a | Abs (Maybe Type) (Expr a) a | Let (Expr a) (Expr a) a | PrimInt Integer a | TupAccess Int Int (Expr a) a | PrimOp PrimOpEnum [Expr a] a | FnVal Int a  deriving (Show, Eq, Functor, Generic)
 data Type = PrimT PrimTypeEnum | TupT [Type] | Fn Type Type | TVar Int   deriving (Show, Eq, Generic)
-
-instance Arbitrary PrimOpEnum where
-  arbitrary = genericArbitrary
-  shrink = genericShrink
-
-instance Arbitrary PrimTypeEnum where
-  arbitrary = genericArbitrary
-  shrink = genericShrink
-
-genArbExpr :: (Arbitrary a) => Int -> Int -> Gen (Expr a)
-genArbExpr n m | m <= 0 = oneof [
-    EVar <$> chooseInt (0,n-1) <*> arbitrary,
-    PrimInt <$> chooseInteger (0, 99999)  <*> arbitrary
-  ]
-genArbExpr n m = oneof [
-    EVar <$> chooseInt (0,n-1) <*> arbitrary,
-    App <$> gaen <*> gaen <*> arbitrary,
-    Abs Nothing {- TODO -} <$> gaen1 <*> arbitrary,
-    Let <$> gaen <*> gaen1 <*> arbitrary,
-    PrimInt <$> arbitrary <*> arbitrary,
-    (\a b -> PrimOp Plus [a,b]) <$> gaen <*> gaen <*> arbitrary,
-    (\a b c -> PrimOp IfZ [a,b,c]) <$> gaen <*> gaen <*> gaen <*> arbitrary,
-    chooseInt (0,4) >>= (\n -> TupAccess n <$> chooseInt (0,n-1) <*> gaen <*> arbitrary),
-    chooseInt (2, min 5 m) >>= (\n -> PrimOp Tup <$> replicateM n gaen <*> arbitrary)
-  ]
-  where
-    gaen  = genArbExpr n     (m-1)
-    gaen1 = genArbExpr (n+1) (m-1)
-
-instance (Arbitrary a) => Arbitrary (Expr a) where
-  arbitrary = getSize >>= genArbExpr 0
-  shrink = genericShrink
-
-instance Arbitrary Type where
-  arbitrary = genericArbitrary
-  shrink = genericShrink
+data Code a = Code [(Type, Expr a)] deriving (Eq, Show, Generic)
 
 evar n = EVar n ()
 app a b = App a b ()
@@ -59,6 +22,7 @@ let' a b = Let a b ()
 primInt n = PrimInt n ()
 tupAccess n m a = TupAccess n m a ()
 primOp s e = PrimOp s e ()
+fnVal n = FnVal n ()
 
 exprVal :: Expr a -> a
 exprVal (EVar          _ q) = q
@@ -68,6 +32,7 @@ exprVal (Let         _ _ q) = q
 exprVal (PrimInt       _ q) = q
 exprVal (TupAccess _ _ _ q) = q
 exprVal (PrimOp      _ _ q) = q
+exprVal (FnVal         _ q) = q
 
 validAbsType :: Type -> Bool
 validAbsType (PrimT _) = True
@@ -80,17 +45,18 @@ goodNumArgs Plus n = n == 2
 goodNumArgs Tup  n = n > 1
 goodNumArgs IfZ  n = n == 3
 
-validExpr' :: Int -> Expr () -> Bool
-validExpr' n (EVar m ()) = m < n && m >= 0
-validExpr' n (App a b ()) = validExpr' n a && validExpr' n b
-validExpr' n (Abs t a ()) = maybe True validAbsType t && validExpr' (n+1) a
-validExpr' n (Let a b ()) = validExpr' n a && validExpr' (n+1) b
-validExpr' n (PrimInt _ ()) = True
-validExpr' n (TupAccess nn m a ()) = nn >= 0 && m >= 0 && m > nn && validExpr' n a
-validExpr' n (PrimOp o l ()) = goodNumArgs o (length l) && all (validExpr' n) l
+validExpr' :: Int -> Int -> Expr () -> Bool
+validExpr' maxFn n (EVar m ()) = m < n && m >= 0
+validExpr' maxFn n (App a b ()) = validExpr' maxFn n a && validExpr' maxFn n b
+validExpr' maxFn n (Abs t a ()) = maybe True validAbsType t && validExpr' maxFn (n+1) a
+validExpr' maxFn n (Let a b ()) = validExpr' maxFn n a && validExpr' maxFn (n+1) b
+validExpr' maxFn n (PrimInt _ ()) = True
+validExpr' maxFn n (TupAccess nn m a ()) = nn >= 0 && m >= 0 && m > nn && validExpr' maxFn n a
+validExpr' maxFn n (PrimOp o l ()) = goodNumArgs o (length l) && all (validExpr' maxFn n) l
+validExpr' maxFn n (FnVal m ()) = m >= 0 && m < n && m <= maxFn -- TODO why does this even get called inth e first place
 
-validExpr :: Expr () -> Bool
-validExpr = validExpr' 0
+validExpr :: Int -> Expr () -> Bool
+validExpr maxFn = validExpr' maxFn 0
 
 incVars :: Int -> Expr a -> Expr a
 incVars n (EVar m q) | m >= n = EVar (m+1) q
