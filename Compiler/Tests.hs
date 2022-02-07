@@ -68,9 +68,9 @@ instance (Arbitrary a) => Arbitrary (Code a) where
 
 printParseTest e = validExpr (-1) e ==> (Right e == parse exprFileParser "" (printExpr e))
 
-betaReducePreservesWellTyped e = validExpr (-1) e ==> isRight (annotateExpr e) ==> isRight (annotateExpr $ betaReduceNormal e)
+betaReducePreservesWellTyped e = validExpr (-1) e ==> isRight (annotateExpr e) ==> isRight (annotateExpr $ betaReduceFull e)
 
-betaReduceNoLetPreservesWellTyped e = validExpr (-1) e ==> isRight (annotateExpr e) ==> isRight (annotateExpr $ betaReduce (normalBetaReduceSettings { reduceLet = False }) e)
+betaReduceNoLetPreservesWellTyped e = validExpr (-1) e ==> isRight (annotateExpr e) ==> isRight (annotateExpr $ betaReduce normalBetaReduceSettings { reduceLet = False, reduceIfVals = True } e)
 
 anfIdempotent e = validExpr (-1) e ==> isRight (annotateExpr e) ==> (let e' = runAnf e in runAnf e' == e')
 
@@ -80,18 +80,16 @@ anfPreservesType e = validExpr (-1) e ==> isRight te ==> f te tre where
   f (Right a) (Right b) = runTypesAlphaEquiv a b
   f _ _ = False
 
-anfPreservesEval e = validExpr (-1) e ==> isRight (annotateExpr e) ==> betaReduceNormal e == betaReduceNormal (runAnf e)
+anfPreservesEval e = validExpr (-1) e ==> isRight (annotateExpr e) ==> betaReduceFull e == betaReduceFull (runAnf e)
 
-baseEvalInt e = validExpr (-1) e ==> (exprVal <$> annotateExpr e) == Right intType ==> f (betaReduceNormal e) where
+baseEvalInt e = validExpr (-1) e ==> (exprVal <$> annotateExpr e) == Right intType ==> f (betaReduceFull e) where
   f (PrimInt _ _) = True
   f _ = False
 
 cpsBaseEvalPreserved e = validExpr (-1) e ==> (exprVal <$> annotateExpr e) == Right intType ==> betaReduceNormal e == betaReduceNormal (app (anfWrapCps $ runAnf e) (abs' (evar 0)))
 
--- something kinda scary: without eliminating lets there should be a counterexample: let a = (\x. \y. 5) 6 in a a
---    but quickcheck doesn't find that counterexample at the moment
 cpsPreservesWellTypedLetless e = validExpr (-1) e ==> isRight (annotateExpr e') ==> isRight (annotateExpr $ anfWrapCps $ runAnf e') where
-  e' = betaReduce (normalBetaReduceSettings { reduceApp = False }) e
+  e' = betaReduce (normalBetaReduceSettings { reduceApp = False, reduceIfVals = True }) e
 
 tests :: IO ()
 tests = do
