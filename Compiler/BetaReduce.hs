@@ -4,9 +4,9 @@ import Prelude hiding (abs)
 import Compiler.Types
 
 -- TODO setting on whether to reduce fully or not
-data BetaReduceSettings = BetaReduceSettings { enterAbs :: Bool, reduceLet :: Bool, reduceApp :: Bool, reduceIfVals :: Bool }
-normalBetaReduceSettings = BetaReduceSettings True True True False
-fullBetaReduceSettings = BetaReduceSettings True True True True
+data BetaReduceSettings = BetaReduceSettings { enterAbs :: Bool, reduceLet :: Bool, reduceApp :: Bool, reduceIfVals :: Bool, betaReduceFns :: [Expr ()] }
+normalBetaReduceSettings = BetaReduceSettings True True True False []
+fullBetaReduceSettings = BetaReduceSettings True True True True []
 
 betaReduce :: BetaReduceSettings -> Expr () -> Expr ()
 betaReduce set (App (Abs _ a ()) b ()) | reduceApp set = betaReduce set $ replaceVar 0 (betaReduce set b) a
@@ -33,6 +33,7 @@ betaReduce set (PrimOp IfZ [n, a, b] ()) = (if nChanged then betaReduce set else
   n' = betaReduce set n
   nChanged = n' /= n
 betaReduce set (PrimOp Tup l ()) = primOp Tup (betaReduce set <$> l)
+betaReduce set (FnVal m ()) | m < length (betaReduceFns set) = (betaReduceFns set) !! m
 betaReduce set a = a
 
 betaReduceNormal = betaReduce normalBetaReduceSettings
