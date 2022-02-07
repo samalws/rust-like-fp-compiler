@@ -3,9 +3,9 @@ module Compiler.Tests where
 import Prelude hiding (abs)
 import Test.QuickCheck (quickCheckWith, stdArgs, maxSuccess, maxSize, (==>), Property, Gen, getSize, elements, oneof, chooseInt, chooseInteger)
 import Test.QuickCheck.Arbitrary.Generic (Arbitrary, arbitrary, shrink, genericArbitrary, genericShrink)
-import Data.Either (isRight)
+import Data.Either (isRight, fromRight)
 import Text.Parsec (parse)
-import Control.Monad (replicateM)
+import Control.Monad (replicateM, void)
 import Compiler.Types
 import Compiler.BetaReduce
 import Compiler.HM
@@ -45,8 +45,7 @@ genArbExpr maxFn n m = oneof [
     gaen1 = genArbExpr maxFn (n+1) (m-1)
 
 typeOrderedCode' :: [Type] -> [Expr a] -> [Type]
-typeOrderedCode' ts [] = ts
-typeOrderedCode' ts (h:r) = typeOrderedCode' (ts <> [either (const intType) id $ exprVal <$> annotateExpr (const () <$> h)]) r
+typeOrderedCode' = foldl (\ts' h -> ts' <> [fromRight intType $ exprVal <$> annotateExpr (void h)])
 
 typeOrderedCode :: [Expr a] -> Code a
 typeOrderedCode es = Code $ zip (typeOrderedCode' [] es) es

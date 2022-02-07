@@ -33,7 +33,7 @@ betaReduce set (PrimOp IfZ [n, a, b] ()) = (if nChanged then betaReduce set else
   n' = betaReduce set n
   nChanged = n' /= n
 betaReduce set (PrimOp Tup l ()) = primOp Tup (betaReduce set <$> l)
-betaReduce set (FnVal m ()) | m < length (betaReduceFns set) = (betaReduceFns set) !! m
+betaReduce set (FnVal m ()) | m < length (betaReduceFns set) = betaReduceFns set !! m
 betaReduce set a = a
 
 betaReduceNormal = betaReduce normalBetaReduceSettings
