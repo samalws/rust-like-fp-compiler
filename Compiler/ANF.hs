@@ -11,6 +11,7 @@ anf (Abs t a ()) l r = let'
                          (r (evar 0) (map (incVars 0) l))
 anf (Let a b ()) l r = anf a (evar 0:b:l) (\a' ((EVar z' ()):b':l') ->
                        anf (replaceVar z' a' b') l' r)
+anf (TupAccess n m a ()) l r = anf a l (r . tupAccess n m) -- thanks quickcheck
 anf a l r = r a l
 
 anfTransportVals' :: Int -> [Expr ()] -> [Expr ()] -> ([Expr ()] -> [Expr ()] -> Expr ()) -> Expr ()

@@ -12,7 +12,7 @@ import Control.Monad.State (StateT, runStateT, gets, modify)
 
 data PrimOpEnum = Plus | Tup | IfZ   deriving (Show, Eq, Generic)
 data PrimTypeEnum = IntT   deriving (Show, Eq, Generic)
-data Expr a = EVar Int a | App (Expr a) (Expr a) a | Abs (Maybe Type) (Expr a) a | Let (Expr a) (Expr a) a | PrimInt Integer a | PrimOp PrimOpEnum [Expr a] a  deriving (Show, Eq, Functor, Generic)
+data Expr a = EVar Int a | App (Expr a) (Expr a) a | Abs (Maybe Type) (Expr a) a | Let (Expr a) (Expr a) a | PrimInt Integer a | TupAccess Int Int (Expr a) a | PrimOp PrimOpEnum [Expr a] a  deriving (Show, Eq, Functor, Generic)
 data Type = PrimT PrimTypeEnum | TupT [Type] | Fn Type Type | TVar Int   deriving (Show, Eq, Generic)
 
 instance Arbitrary PrimOpEnum where
@@ -36,6 +36,7 @@ genArbExpr n m = oneof [
     PrimInt <$> arbitrary <*> arbitrary,
     (\a b -> PrimOp Plus [a,b]) <$> gaen <*> gaen <*> arbitrary,
     (\a b c -> PrimOp IfZ [a,b,c]) <$> gaen <*> gaen <*> gaen <*> arbitrary,
+    chooseInt (0,4) >>= (\n -> TupAccess n <$> chooseInt (0,n-1) <*> gaen <*> arbitrary),
     chooseInt (2, min 5 m) >>= (\n -> PrimOp Tup <$> replicateM n gaen <*> arbitrary)
   ]
   where
@@ -56,15 +57,17 @@ abs t a = Abs t a ()
 abs' = abs Nothing
 let' a b = Let a b ()
 primInt n = PrimInt n ()
+tupAccess n m a = TupAccess n m a ()
 primOp s e = PrimOp s e ()
 
 exprVal :: Expr a -> a
-exprVal (EVar     _ q) = q
-exprVal (App    _ _ q) = q
-exprVal (Abs    _ _ q) = q
-exprVal (Let    _ _ q) = q
-exprVal (PrimInt  _ q) = q
-exprVal (PrimOp _ _ q) = q
+exprVal (EVar          _ q) = q
+exprVal (App         _ _ q) = q
+exprVal (Abs         _ _ q) = q
+exprVal (Let         _ _ q) = q
+exprVal (PrimInt       _ q) = q
+exprVal (TupAccess _ _ _ q) = q
+exprVal (PrimOp      _ _ q) = q
 
 validAbsType :: Type -> Bool
 validAbsType (PrimT _) = True
@@ -83,6 +86,7 @@ validExpr' n (App a b ()) = validExpr' n a && validExpr' n b
 validExpr' n (Abs t a ()) = maybe True validAbsType t && validExpr' (n+1) a
 validExpr' n (Let a b ()) = validExpr' n a && validExpr' (n+1) b
 validExpr' n (PrimInt _ ()) = True
+validExpr' n (TupAccess nn m a ()) = nn >= 0 && m >= 0 && m > nn && validExpr' n a
 validExpr' n (PrimOp o l ()) = goodNumArgs o (length l) && all (validExpr' n) l
 
 validExpr :: Expr () -> Bool
@@ -93,6 +97,7 @@ incVars n (EVar m q) | m >= n = EVar (m+1) q
 incVars n (App x y q) = App (incVars n x) (incVars n y) q
 incVars n (Abs t x q) = Abs t (incVars (n+1) x) q
 incVars n (Let x y q) = Let (incVars n x) (incVars (n+1) y) q
+incVars n (TupAccess nn m a q) = TupAccess nn m (incVars n a) q
 incVars n (PrimOp a l q) = PrimOp a (incVars n <$> l) q
 incVars n x = x
 
@@ -102,6 +107,7 @@ replaceVar m a (EVar n q) | m < n = EVar (n-1) q
 replaceVar m a (App x y q) = App (replaceVar m a x) (replaceVar m a y) q
 replaceVar m a (Abs t x q) = Abs t (replaceVar (m+1) (incVars 0 a) x) q
 replaceVar m a (Let x y q) = Let (replaceVar m a x) (replaceVar (m+1) (incVars 0 a) y) q
+replaceVar m a (TupAccess n mm x q) = TupAccess n mm (replaceVar m a x) q
 replaceVar m a (PrimOp o l q) = PrimOp o (replaceVar m a <$> l) q
 replaceVar _ _ x = x
 

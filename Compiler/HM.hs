@@ -1,6 +1,7 @@
 module Compiler.HM where
 
 import Prelude hiding (abs)
+import Control.Monad (replicateM)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.State (StateT, State, get, gets, put, modify, runStateT, runState)
 import Data.Tuple.Extra (first, second, both, dupe, (***))
@@ -71,6 +72,12 @@ gather env (Let a b ()) = do
   gb <- gather (((n+1,n'),exprVal ga):env) b
   pure $ Let ga gb $ exprVal gb
 gather env (PrimInt n ()) = pure $ PrimInt n intType
+gather env (TupAccess n m a ()) = do
+  ga <- gather env a
+  let ta = exprVal ga
+  vs <- replicateM m newTypeVar
+  addConstr (TupT vs, ta)
+  pure $ TupAccess n m ga (vs !! n)
 gather env (PrimOp o l ()) = do
   gl <- sequence $ gather env <$> l
   PrimOp o gl <$> primOpType o (exprVal <$> gl)

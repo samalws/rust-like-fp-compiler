@@ -78,6 +78,15 @@ ifzParser m = do
   c <- subExprParser m
   pure $ primOp IfZ [a,b,c]
 
+tupAccessParser m = do
+  char '.'
+  n <- int
+  char '.'
+  mm <- int
+  many1 space
+  a <- subExprParser m
+  pure $ tupAccess n mm a
+
 tupParser m = primOp Tup <$> (char '(' >> spaces >> mySepBy1 (exprParser' m) (spaces >> char ',' >> spaces) <* char ')')
 
 parenParser m = char '(' >> spaces >> exprParser' m <* spaces <* char ')'
@@ -91,7 +100,7 @@ subExprParser m =     try (evar <$> varParser' m)
                   <|> try (tupParser m)
 
 exprParser' :: Map String Int -> Parser (Expr ())
-exprParser' m = try (addParser m) <|> try (ifzParser m) <|> try (appParser m) <|> try (subExprParser m)
+exprParser' m = try (addParser m) <|> try (ifzParser m) <|> try (appParser m) <|> try (tupAccessParser m) <|> try (subExprParser m)
 
 exprParser :: Parser (Expr ())
 exprParser = exprParser' empty

@@ -17,6 +17,7 @@ printExpr' env (Let a b ()) = do
   v <- newPrinterVar
   (\a' b' -> "let " <> v <> " = " <> a' <> " in " <> b') <$> printExpr' env a <*> printExpr' (v:env) b
 printExpr' env (PrimInt n ()) = pure $ show n
+printExpr' env (TupAccess n m a ()) = (\a' -> "." <> show n <> "." <> show m <> " (" <> a' <> ")") <$> printExpr' env a
 printExpr' env (PrimOp Plus [a,b] ()) = (\a' b' -> "(" <> a' <> ") + (" <> b' <> ")") <$> printExpr' env a <*> printExpr' env b
 printExpr' env (PrimOp IfZ [a,b,c] ()) = (\a' b' c' -> "ifz (" <> a' <> ") (" <> b' <> ") (" <> c' <> ")") <$> printExpr' env a <*> printExpr' env b <*> printExpr' env c
 printExpr' env (PrimOp Tup l ()) = (\l' -> "(" <> f l' <> ")") <$> sequence (printExpr' env <$> l) where
