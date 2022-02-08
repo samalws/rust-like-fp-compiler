@@ -10,6 +10,7 @@ pkgs.mkShell {
       utility-ht
       parsec
       parsec-numbers
+      ilist
     ]))
   ];
 }

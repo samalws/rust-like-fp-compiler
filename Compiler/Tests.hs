@@ -119,16 +119,46 @@ anfCodePreservesTypes c = validCode c ==> isRight c' ==> (codeTypes <$> c') == (
   a' = annotateCode $ anfCode c
   codeTypes (Code l) = exprVal . snd <$> l
 
+anfCodePreservesEval :: Code () -> Property
+anfCodePreservesEval c = not (null l) ==> validCode c ==> isRight (annotateCode c) ==> head l' == head al' where
+  Code l = c
+  ac = anfCode c
+  f = betaReduceCodeFn fullBetaReduceSettings 0
+  Code l' = f c
+  Code al' = f ac
+
+anfCodeIdempotent :: Code () -> Property
+anfCodeIdempotent c = validCode c ==> isRight (annotateCode c) ==> (let c' = anfCode c in c' == anfCode c')
+
+codeBaseEvalInt :: Code () -> Property
+codeBaseEvalInt c = not (null l) ==> validCode c ==> f (annotateCode c) ==> g (betaReduceCodeFn normalBetaReduceSettings 0 c) where
+  Code l = c
+  f (Right (Code ((t,_):_))) | t == intType = True
+  f _ = False
+  g (Code l') = h $ snd $ head l'
+  h (PrimInt n ()) = True
+  h _ = False
+
 tests :: IO ()
 tests = do
-  quickCheckWith stdArgs { maxSize = 9, maxSuccess =  1000 } printParseTest
-  quickCheckWith stdArgs { maxSize = 9, maxSuccess = 50000 } betaReducePreservesWellTyped
-  quickCheckWith stdArgs { maxSize = 9, maxSuccess = 50000 } betaReduceNoLetPreservesWellTyped
-  quickCheckWith stdArgs { maxSize = 9, maxSuccess = 50000 } anfIdempotent
+  -- tests on Exprs
+  quickCheckWith stdArgs { maxSize = 9, maxSuccess =  1000 } printParseTest                    -- haven't written a Code parser/printer yet
+  quickCheckWith stdArgs { maxSize = 9, maxSuccess = 50000 } betaReducePreservesWellTyped      -- not true for Code
+  quickCheckWith stdArgs { maxSize = 9, maxSuccess = 50000 } betaReduceNoLetPreservesWellTyped -- not true for Code
+  quickCheckWith stdArgs { maxSize = 9, maxSuccess = 50000 } cpsBaseEvalPreserved              -- haven't made CPS for Code yet
+  quickCheckWith stdArgs { maxSize = 9, maxSuccess = 50000 } cpsPreservesWellTypedLetless      -- haven't made CPS for Code yet
+  -- tests on Code
+  quickCheckWith stdArgs { maxSize = 9, maxSuccess = 50000 } codeTypeCorrect
+  quickCheckWith stdArgs { maxSize = 9, maxSuccess = 50000 } anfCodePreservesTypes
+  quickCheckWith stdArgs { maxSize = 9, maxSuccess = 50000 } anfCodePreservesEval
+  quickCheckWith stdArgs { maxSize = 9, maxSuccess = 50000 } anfCodeIdempotent
+  quickCheckWith stdArgs { maxSize = 9, maxSuccess = 50000 } codeBaseEvalInt
+
+fullTests :: IO ()
+fullTests = do
+  tests
+  -- do things for Expr that have already been done for Code
   quickCheckWith stdArgs { maxSize = 9, maxSuccess = 50000 } anfPreservesType
   quickCheckWith stdArgs { maxSize = 9, maxSuccess = 50000 } anfPreservesEval
   quickCheckWith stdArgs { maxSize = 9, maxSuccess = 50000 } baseEvalInt
-  quickCheckWith stdArgs { maxSize = 9, maxSuccess = 50000 } cpsBaseEvalPreserved
-  quickCheckWith stdArgs { maxSize = 9, maxSuccess = 50000 } cpsPreservesWellTypedLetless
-  quickCheckWith stdArgs { maxSize = 9, maxSuccess = 50000 } codeTypeCorrect
-  quickCheckWith stdArgs { maxSize = 9, maxSuccess = 50000 } anfCodePreservesTypes
+  quickCheckWith stdArgs { maxSize = 9, maxSuccess = 50000 } anfIdempotent
