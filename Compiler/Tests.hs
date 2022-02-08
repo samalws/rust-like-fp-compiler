@@ -1,7 +1,7 @@
 module Compiler.Tests where
 
 import Prelude hiding (abs)
-import Test.QuickCheck (quickCheckWith, stdArgs, maxSuccess, maxSize, (==>), Property, Gen, getSize, elements, oneof, chooseInt, chooseInteger)
+import Test.QuickCheck (quickCheckWith, stdArgs, maxSuccess, maxSize, (==>), Property, Gen, getSize, elements, oneof, chooseInt, chooseInteger, shuffle)
 import Test.QuickCheck.Arbitrary.Generic (Arbitrary, arbitrary, shrink, genericArbitrary, genericShrink)
 import Data.Either (isRight, fromRight)
 import Data.Tuple.Extra (second)
@@ -53,6 +53,20 @@ typeOrderedCode' = foldl (\ts' h -> ts' <> [fromRight intType $ exprVal <$> anno
 typeOrderedCode :: [Expr a] -> Code a
 typeOrderedCode es = Code $ zip (typeOrderedCode' es) es
 
+shuffleWithMapping :: [a] -> Gen ([(Int, Int)], [a])
+shuffleWithMapping l = do
+  let r = [0..length l - 1]
+  mapping <- shuffle r
+  pure (zip mapping r, f mapping l)
+  where
+    f [] l = []
+    f (h:t) l = (l !! h) : f t l
+
+randomizeCodeOrder :: Code a -> Gen (Code a)
+randomizeCodeOrder (Code l) = do
+  (mapping, l') <- shuffleWithMapping l
+  pure $ Code $ (fmap $ second $ replaceFns mapping) l'
+
 instance (Arbitrary a) => Arbitrary (Expr a) where
   arbitrary = getSize >>= genArbExpr (-1) 0
   shrink = genericShrink
@@ -65,7 +79,8 @@ instance (Arbitrary a) => Arbitrary (Code a) where
   arbitrary = do
     size <- getSize
     numFns <- chooseInt (0,size)
-    typeOrderedCode <$> mapM (\maxFn -> genArbExpr (maxFn-1) 0 size) [0..numFns-1]
+    c <- typeOrderedCode <$> mapM (\maxFn -> genArbExpr (maxFn-1) 0 size) [0..numFns-1]
+    randomizeCodeOrder c
   shrink = genericShrink
 
 printParseTest e = validExpr (-1) e ==> (Right e == parse exprFileParser "" (printExpr e))

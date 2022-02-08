@@ -5,7 +5,7 @@ module Compiler.Types where
 import Prelude hiding (abs)
 import GHC.Generics (Generic)
 import Control.Monad (mzero, replicateM)
-import Data.Maybe (maybe, isJust)
+import Data.Maybe (maybe, isJust, fromJust)
 import Control.Monad.State (StateT, runStateT, gets, modify)
 
 data PrimOpEnum = Plus | Tup | IfZ   deriving (Show, Eq, Generic)
@@ -79,6 +79,15 @@ replaceVar m a (Let x y q) = Let (replaceVar m a x) (replaceVar (m+1) (incVars 0
 replaceVar m a (TupAccess n mm x q) = TupAccess n mm (replaceVar m a x) q
 replaceVar m a (PrimOp o l q) = PrimOp o (replaceVar m a <$> l) q
 replaceVar _ _ x = x
+
+replaceFns :: [(Int, Int)] -> Expr a -> Expr a
+replaceFns m (FnVal n q) = FnVal (fromJust $ lookup n m) q
+replaceFns m (App x y q) = App (replaceFns m x) (replaceFns m y) q
+replaceFns m (Abs t x q) = Abs t (replaceFns m x) q
+replaceFns m (Let x y q) = Let (replaceFns m x) (replaceFns m y) q
+replaceFns m (TupAccess n mm x q) = TupAccess n mm (replaceFns m x) q
+replaceFns m (PrimOp o l q) = PrimOp o (replaceFns m <$> l) q
+replaceFns _ x = x
 
 replaceType :: Int -> Type -> Type -> Type
 replaceType n t (TVar m) | m == n = t
