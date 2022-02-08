@@ -57,7 +57,6 @@ instantiateFn t = do
   modify (second $ const n')
   pure $ replaceTVars gtmap t
 
--- note: GTVars never get added to the constraint set
 gather :: [Type] -> [((Int,Int),Type)] -> Expr () -> State ([(Type, Type)], Int) (Expr Type)
 gather fns env (EVar n ()) = EVar n <$> uncurry instantiate (env !! n)
 gather fns env (App a b ()) = do
@@ -126,17 +125,23 @@ unify (c:_) = lift $ Left $ "Failed to unify constraint " <> show c
 runUnify :: [(Type, Type)] -> Either String [(Int, Type)]
 runUnify t = snd <$> runStateT (unify t) []
 
-annotateExpr :: Expr () -> Either String (Expr Type)
-annotateExpr e = do
-  let (ge, tt) = runGather 0 [] e
+annotateExpr :: [Type] -> Expr () -> Either String (Expr Type)
+annotateExpr ts e = do
+  let (ge, tt) = runGather 0 ts e
   solved <- runUnify tt
   pure $ replaceTypes solved <$> ge
 
-annotateCode :: [Type] -> Code () -> Either String (Code Type)
-annotateCode ts (Code []) = pure (Code [])
-annotateCode ts (Code ((t,e):r)) = do
+annotateCode' :: [Type] -> Code () -> Either String (Code Type)
+annotateCode' ts (Code []) = pure (Code [])
+annotateCode' ts (Code ((t,e):r)) = do
   let (ge, tt) = runGather (maxTypeVar t + 1) ts e
   let te = exprVal ge
-  solved <- runUnify ((te,t):tt) -- TODO right order?
-  Code r' <- annotateCode (ts <> [te]) $ Code r
-  pure $ Code $ (t,replaceTypes solved <$> ge):r'
+  solved <- runUnify tt
+  let ge' = replaceTypes solved <$> ge
+  mapping <- maybe (Left "Incorrect type") Right $ typesAlphaEquivMapping (exprVal ge') t
+  let ge'' = replaceTypes (second TVar <$> mapping) <$> ge'
+  Code r' <- annotateCode' ts (Code r)
+  pure $ Code $ (t,ge''):r'
+
+annotateCode :: Code () -> Either String (Code Type)
+annotateCode (Code l) = annotateCode' (fst <$> l) (Code l)

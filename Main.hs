@@ -19,17 +19,17 @@ main = do
       putStrLn "Expression parsed:"
       print e
       putStrLn "Type of expression:"
-      print $ exprVal <$> annotateExpr e
+      print $ exprVal <$> annotateExpr [] e
       let ee = runAnf e
       putStrLn "A-normal form:"
       print ee
       putStrLn "Type of a-normal form:"
-      print $ exprVal <$> annotateExpr ee
+      print $ exprVal <$> annotateExpr [] ee
       let eee = anfWrapCps ee
       putStrLn "CPS form:"
       print eee
       putStrLn "Type of CPS form:"
-      print $ exprVal <$> annotateExpr eee
+      print $ exprVal <$> annotateExpr [] eee
       putStrLn "Original beta reduced:"
       print $ betaReduceNormal e
       putStrLn "ANF beta reduced:"

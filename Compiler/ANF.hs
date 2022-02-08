@@ -1,6 +1,7 @@
 module Compiler.ANF where
 
 import Prelude hiding (abs)
+import Data.Tuple.Extra (second)
 import Compiler.Types
 
 anf :: Expr () -> [Expr ()] -> (Expr () -> [Expr ()] -> Expr ()) -> Expr ()
@@ -31,3 +32,6 @@ anfTransportVals x = anfTransportVals' (length x) x
 -- should be idempotent
 runAnf :: Expr () -> Expr ()
 runAnf a = anf a [] (\a' [] -> a')
+
+anfCode :: Code () -> Code ()
+anfCode (Code l) = Code $ second runAnf <$> l

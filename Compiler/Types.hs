@@ -53,10 +53,13 @@ validExpr' maxFn n (Let a b ()) = validExpr' maxFn n a && validExpr' maxFn (n+1)
 validExpr' maxFn n (PrimInt _ ()) = True
 validExpr' maxFn n (TupAccess nn m a ()) = nn >= 0 && m >= 0 && m > nn && validExpr' maxFn n a
 validExpr' maxFn n (PrimOp o l ()) = goodNumArgs o (length l) && all (validExpr' maxFn n) l
-validExpr' maxFn n (FnVal m ()) = m >= 0 && m < n && m <= maxFn -- TODO why does this even get called inth e first place
+validExpr' maxFn n (FnVal m ()) = m >= 0 && m < maxFn
 
 validExpr :: Int -> Expr () -> Bool
 validExpr maxFn = validExpr' maxFn 0
+
+validCode :: Code () -> Bool
+validCode (Code l) = all (validExpr ll . snd) l where ll = length l
 
 incVars :: Int -> Expr a -> Expr a
 incVars n (EVar m q) | m >= n = EVar (m+1) q
@@ -119,3 +122,6 @@ typesAlphaEquiv _ _ = mzero
 
 runTypesAlphaEquiv :: Type -> Type -> Bool
 runTypesAlphaEquiv a b = isJust $ runStateT (typesAlphaEquiv a b) []
+
+typesAlphaEquivMapping :: Type -> Type -> Maybe [(Int,Int)]
+typesAlphaEquivMapping a b = snd <$> runStateT (typesAlphaEquiv a b) []
