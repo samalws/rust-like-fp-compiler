@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveFunctor, DeriveGeneric #-}
+{-# LANGUAGE DeriveFunctor, DeriveFoldable, DeriveGeneric #-}
 
 module Compiler.Types where
 
@@ -13,7 +13,7 @@ import Control.Monad.State (StateT, runStateT, gets, modify)
 
 data PrimOpEnum = Plus | Tup | IfZ   deriving (Show, Eq, Generic)
 data PrimTypeEnum = IntT   deriving (Show, Eq, Generic)
-data Expr a = EVar Int a | App (Expr a) (Expr a) a | Abs (Maybe Type) (Expr a) a | Let (Expr a) (Expr a) a | PrimInt Integer a | TupAccess Int Int (Expr a) a | PrimOp PrimOpEnum [Expr a] a | FnVal Int a  deriving (Show, Eq, Functor, Generic)
+data Expr a = EVar Int a | App (Expr a) (Expr a) a | Abs (Maybe Type) (Expr a) a | Let (Expr a) (Expr a) a | PrimInt Integer a | TupAccess Int Int (Expr a) a | PrimOp PrimOpEnum [Expr a] a | FnVal Int a  deriving (Show, Eq, Functor, Foldable, Generic)
 data Type = PrimT PrimTypeEnum | TupT [Type] | Fn Type Type | TVar Int   deriving (Show, Eq, Generic)
 newtype Code a = Code [(Type, Expr a)] deriving (Eq, Show, Generic)
 type Register = Int

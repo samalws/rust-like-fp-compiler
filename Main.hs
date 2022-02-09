@@ -7,6 +7,7 @@ import Compiler.HM
 import Compiler.ANF
 import Compiler.CPS
 import Compiler.RegSpill
+import Compiler.RegAlloc
 import Compiler.Parser
 import Compiler.Printer
 import Compiler.Tests
@@ -34,6 +35,9 @@ main = do
       let eeee = regSpill 4 ee
       putStrLn "Register spilled (from ANF) (r=4):"
       print eeee
+      let eeeee = runRegAlloc ee
+      putStrLn "Register alloced (from ANF) (r=4):"
+      print eeeee
       putStrLn "Original beta reduced:"
       print $ betaReduceNormal e
       putStrLn "ANF beta reduced:"
