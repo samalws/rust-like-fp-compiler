@@ -11,14 +11,14 @@ normalBetaReduceSettings = BetaReduceSettings True True True False []
 fullBetaReduceSettings = BetaReduceSettings True True True True []
 
 betaReduce :: BetaReduceSettings -> Expr () -> Expr ()
-betaReduce set (App (Abs _ a ()) b ()) | reduceApp set = betaReduce set $ replaceVar 0 (betaReduce set b) a
+betaReduce set (App (Abs _ a ()) b ()) | reduceApp set = betaReduce set $ replaceVar True 0 (betaReduce set b) a
 betaReduce set (App a b ()) = f $ app a' b' where
   a' = betaReduce set a
   b' = betaReduce set b
   anythingChanged = a' /= a || b' /= b
   f = if anythingChanged then betaReduce set else id
 betaReduce set (Abs t a ()) | enterAbs set = abs t $ betaReduce set a
-betaReduce set (Let a b ()) | reduceLet set = betaReduce set $ replaceVar 0 (betaReduce set a) b
+betaReduce set (Let a b ()) | reduceLet set = betaReduce set $ replaceVar True 0 (betaReduce set a) b
 betaReduce set (Let a b ()) | not (reduceLet set) = let' (betaReduce set a) (betaReduce set b)
 betaReduce set (PrimOp Plus [PrimInt n (), PrimInt m ()] ()) = primInt (n+m)
 betaReduce set (PrimOp Plus [n, m] ()) = (if anythingChanged then betaReduce set else id) (primOp Plus [n', m']) where

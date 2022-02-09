@@ -6,6 +6,7 @@ import Compiler.BetaReduce
 import Compiler.HM
 import Compiler.ANF
 import Compiler.CPS
+import Compiler.RegSpill
 import Compiler.Parser
 import Compiler.Printer
 import Compiler.Tests
@@ -30,6 +31,9 @@ main = do
       print eee
       putStrLn "Type of CPS form:"
       print $ exprVal <$> annotateExpr [] eee
+      let eeee = regSpill 4 ee
+      putStrLn "Register spilled (from ANF) (r=4):"
+      print eeee
       putStrLn "Original beta reduced:"
       print $ betaReduceNormal e
       putStrLn "ANF beta reduced:"

@@ -12,6 +12,7 @@ import Compiler.BetaReduce
 import Compiler.HM
 import Compiler.ANF
 import Compiler.CPS
+import Compiler.RegSpill
 import Compiler.Parser
 import Compiler.Printer
 
@@ -139,6 +140,12 @@ codeBaseEvalInt c = not (null l) ==> validCode c ==> f (annotateCode c) ==> g (b
   h (PrimInt n ()) = True
   h _ = False
 
+regSpillPreservesType :: (Expr (), Int) -> Property
+regSpillPreservesType (e,r) = r > 2 ==> r < 5 ==> validExpr (-1) e ==> isRight (annotateExpr [] e) ==> isRight (annotateExpr [] $ regSpill r $ runAnf e)
+
+regSpillPreservesEval :: (Expr (), Int) -> Property
+regSpillPreservesEval (e,r) = r > 2 ==> r < 5 ==> validExpr (-1) e ==> isRight (annotateExpr [] e) ==> betaReduceFull e == betaReduceFull (regSpill r $ runAnf e)
+
 tests :: IO ()
 tests = do
   -- tests on Exprs
@@ -147,6 +154,8 @@ tests = do
   quickCheckWith stdArgs { maxSize = 9, maxSuccess = 50000 } betaReduceNoLetPreservesWellTyped -- not true for Code
   quickCheckWith stdArgs { maxSize = 9, maxSuccess = 50000 } cpsBaseEvalPreserved              -- haven't made CPS for Code yet
   quickCheckWith stdArgs { maxSize = 9, maxSuccess = 50000 } cpsPreservesWellTypedLetless      -- haven't made CPS for Code yet
+  quickCheckWith stdArgs { maxSize = 9, maxSuccess = 50000 } regSpillPreservesEval             -- haven't made regSpill for Code yet (easy tho)
+  quickCheckWith stdArgs { maxSize = 9, maxSuccess = 50000 } regSpillPreservesType             -- haven't made regSpill for Code yet (easy tho)
   -- tests on Code
   quickCheckWith stdArgs { maxSize = 9, maxSuccess = 50000 } codeTypeCorrect
   quickCheckWith stdArgs { maxSize = 9, maxSuccess = 50000 } anfCodePreservesTypes
