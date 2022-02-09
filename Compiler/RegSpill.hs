@@ -15,7 +15,7 @@ doRegSpill r e = let' tup $ regSpill r $ replaceVars mapping e where
 -- TODO feel like I'm making an off by one error here
 -- TODO also it's not idempotent why?!??!?!
 regSpill :: Register -> Expr () -> Expr ()
-regSpill r l@(Let _ _ ()) | size (freeVars l) >= r = doRegSpill r l
-regSpill r l@(Let (Abs t x ()) y ()) = let' (abs t $ regSpill r x) $ regSpill r y
+regSpill r l@(Let _ y ()) | size (freeVars y) >= r = doRegSpill r l
+regSpill r l@(Let (Abs t x ()) y ()) = let' (abs t $ regSpill r x) $ regSpill r y -- TODO won't need this eventually
 regSpill r l@(Let x y ()) = let' x $ regSpill r y
 regSpill r x = x
