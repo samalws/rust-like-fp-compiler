@@ -10,7 +10,7 @@ import Compiler.Types
 -- TODO
 
 anfToCps :: Expr () -> Expr () -> Expr ()
-anfToCps r (Let (App a b ()) c ()) = let' (abs' $ anfToCps (incVars 0 r) c) (app (app (incVars 0 a) (incVars 0 b)) (evar 0))
+anfToCps r (Let (App a b ()) c ()) = let' (abs' $ anfToCps (incVars 0 r) c) ((incVars 0 a `app` incVars 0 b) `app` evar 0)
 anfToCps r (Let (Abs _ a ()) c ()) = let' (abs' $ abs' $ anfToCps (evar 0) $ incVars 0 a) (anfToCps (incVars 0 r) c)
 anfToCps r (Let a c ()) = let' a $ anfToCps (incVars 0 r) c
 anfToCps r a = app r a

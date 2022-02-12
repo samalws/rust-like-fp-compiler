@@ -7,6 +7,7 @@ import Compiler.HM
 import Compiler.AddBlankAbses
 import Compiler.ANF
 import Compiler.CPS
+import Compiler.ClosureConv
 import Compiler.RegSpill
 import Compiler.RegAlloc
 import Compiler.Parser
