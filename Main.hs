@@ -4,6 +4,7 @@ import Text.Parsec.String
 import Compiler.Types
 import Compiler.BetaReduce
 import Compiler.HM
+import Compiler.AddBlankAbses
 import Compiler.ANF
 import Compiler.CPS
 import Compiler.RegSpill
@@ -14,33 +15,36 @@ import Compiler.Tests
 
 main = do
   tests
+  {-
   contents <- parseFromFile exprFileParser "input.txt"
   case contents of
     Left e -> print e
     Right e -> do
       putStrLn "Expression parsed:"
       print e
+      putStrLn $ printExpr e
       putStrLn "Type of expression:"
       print $ exprVal <$> annotateExpr [] e
       let ee = runAnf e
       putStrLn "A-normal form:"
-      print ee
+      putStrLn $ printExpr ee
       putStrLn "Type of a-normal form:"
       print $ exprVal <$> annotateExpr [] ee
       let eee = anfWrapCps ee
       putStrLn "CPS form:"
-      print eee
+      putStrLn $ printExpr eee
       putStrLn "Type of CPS form:"
       print $ exprVal <$> annotateExpr [] eee
       let eeee = regSpill 4 ee
       putStrLn "Register spilled (from ANF) (r=4):"
-      print eeee
+      putStrLn $ printExpr eeee
       let eeeee = runRegAlloc ee
       putStrLn "Register alloced (from ANF) (r=4):"
       print eeeee
       putStrLn "Original beta reduced:"
-      print $ betaReduceNormal e
+      putStrLn $ printExpr $ betaReduceNormal e
       putStrLn "ANF beta reduced:"
-      print $ betaReduceNormal ee
+      putStrLn $ printExpr $ betaReduceNormal ee
       putStrLn "CPS beta reduced:"
-      print $ betaReduceNormal $ app eee (abs' (evar 0))
+      putStrLn $ printExpr $ betaReduceNormal $ app eee (abs' (evar 0))
+  -}

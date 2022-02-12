@@ -10,6 +10,7 @@ import Control.Monad (replicateM, void)
 import Compiler.Types
 import Compiler.BetaReduce
 import Compiler.HM
+import Compiler.AddBlankAbses
 import Compiler.ANF
 import Compiler.CPS
 import Compiler.RegSpill
@@ -153,6 +154,9 @@ regSpillPreservesEval (e,r) = r > 2 ==> r < 5 ==> validExpr (-1) e ==> isRight (
 regSpillLimitsMaxReg :: (Expr (), Int) -> Property
 regSpillLimitsMaxReg (e,r) = r > 2 ==> r < 5 ==> validExpr (-1) e ==> maxRegAlloced (runRegAlloc $ regSpill r $ runAnf e) <= r
 
+addBlankAbsesPreservesWellTyped :: Code () -> Property
+addBlankAbsesPreservesWellTyped c = validCode c ==> isRight (annotateCode c) ==> isRight (annotateCode $ addBlankAbses c)
+
 tests :: IO ()
 tests = do
   -- tests on Exprs
@@ -171,6 +175,7 @@ tests = do
   quickCheckWith stdArgs { maxSize = 9, maxSuccess =  50000 } anfCodePreservesEval
   quickCheckWith stdArgs { maxSize = 9, maxSuccess =  50000 } anfCodeIdempotent
   quickCheckWith stdArgs { maxSize = 9, maxSuccess =  50000 } codeBaseEvalInt
+  quickCheckWith stdArgs { maxSize = 9, maxSuccess =  50000 } addBlankAbsesPreservesWellTyped
 
 fullTests :: IO ()
 fullTests = do
