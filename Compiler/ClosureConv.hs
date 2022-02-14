@@ -40,6 +40,9 @@ closureConvert n0 (Abs t a ()) = do
 closureConvert n0 (Let a b ()) = let' <$> closureConvert n0 a <*> closureConvert n0 b
 closureConvert n0 a = pure a -- tupaccess, primop should contain only vars and ints anyway
 
+closureConvertFn :: Int -> Expr () -> State [(Type, Expr ())] (Expr ())
+closureConvertFn n0 e = nest n abs' <$> closureConvert n0 a   where (a,n) = absesTraverse e
+
 -- gdi i really need to rename stuff
 curryConvertFinalDoom :: Expr () -> Int -> Expr ()
 curryConvertFinalDoom a 2 = a
@@ -50,9 +53,9 @@ curryConvertFinalDoom a n = let' (snd' 2) $ nest (n-5) (let' $ snd' 0) $ replace
   snd' q = tupAccess 1 2 $ evar q
 
 curryConvertEmits :: Int -> Expr () -> Int -> Int -> State [(Type, Expr ())] (Expr ())
-curryConvertEmits n0 a m 2 = do
+curryConvertEmits n0 a m 1 = do
   a' <- anfToCpsFull g h (evar 0) (incVars 0 a)
-  pure $ abs' $ abs' $ abs' $ curryConvertFinalDoom a' m
+  pure $ abs' $ abs' $ abs' $ curryConvertFinalDoom a' (m+1)
   where
     g 1 e = closureConvert n0 $ abs' e
     h e ee = (tupAccess 0 2 e `app` tupAccess 1 2 e) `app` ee
@@ -70,5 +73,5 @@ curryConvert :: Int -> Expr () -> State [(Type, Expr ())] (Expr ())
 curryConvert n0 = f . absesTraverse    where f (a,n) = curryConvertEmits n0 a n n
 
 runClosureConvert :: Code () -> Code ()
-runClosureConvert (Code l) = f $ flip runState [] $ mapM ((closureConvert (length l) >=> curryConvert (length l)) . snd) l where
+runClosureConvert (Code l) = f $ flip runState [] $ mapM ((closureConvertFn (length l) >=> curryConvert (length l)) . snd) l where
   f (a, s) = Code $ zip (fst <$> l) a <> reverse s
