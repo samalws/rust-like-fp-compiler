@@ -5,6 +5,7 @@ import Control.Monad ((>=>))
 import Control.Monad.State (State, gets, modify, runState)
 import Data.List.Index (indexed)
 import Data.Set (toList)
+import Data.Function.HT (nest)
 import Compiler.Types
 import Compiler.CPS
 
@@ -24,17 +25,13 @@ closureConvertEmit n0 a = do
 
 -- TODO type annotations are wrong, there must be a more elegant way to do this
 -- maybe push some of this back to earlier stages and uhhhhhhhhhhhhhhhhh
--- to be performed after CPS conversion
 -- done in this conversion:
 --   f -> (f, ())
 --   a b r -> a.0 a.1 b r
 --   \x. \r. y -> (f,env); emit f = \env. \x. \r. y
--- TODO add FnVal as one of the things that get anf'd
 -- n0: current length of Code fns
 closureConvert :: Int -> Expr () -> State [(Type, Expr ())] (Expr ())
 closureConvert n0 (FnVal m ()) = pure $ primOp Tup [fnVal m, primInt 0] -- TODO replace 0 with () when void is made
--- closureConvert n0 (App (App a b ()) r ()) = pure $ ((tupAccess 0 2 a `app` tupAccess 1 2 a) `app` b) `app` r -- assumes that a, b, and r are alredy clean
--- closureConvert n0 (App _ _ ()) = error "closureConvert ran into a weird App"
 closureConvert n0 (App a b ()) = pure $ (tupAccess 0 2 a `app` tupAccess 1 2 a) `app` b -- assumes that a, and b are alredy clean
 closureConvert n0 (Abs t a ()) = do
   a' <- closureConvert n0 a
@@ -48,16 +45,19 @@ curryConvertFinalDoom :: Expr () -> Int -> Expr ()
 curryConvertFinalDoom a 2 = a
 curryConvertFinalDoom a 3 = a
 curryConvertFinalDoom a 4 = replaceVars [(2, tupAccess 0 2 (evar 2)), (3, tupAccess 1 2 (evar 2))] a
-curryConvertFinalDoom a n = let' (snd' 2) $ applyN (n-5) (let' $ snd' 0) $ replaceVars ([(0, evar (n-4)), (1, evar (n-3)), (2, evar (n-2))] <> [(m, fst' (m-1)) | m <- [3..n-2]] <> [(n-1, snd' 0)]) a   where
+curryConvertFinalDoom a n = let' (snd' 2) $ nest (n-5) (let' $ snd' 0) $ replaceVars ([(0, evar (n-4)), (1, evar (n-3)), (2, evar (n-2))] <> [(m, fst' (m-1)) | m <- [3..n-2]] <> [(n-1, snd' 0)]) a   where
   fst' q = tupAccess 0 2 $ evar q
   snd' q = tupAccess 1 2 $ evar q
-  applyN 0 f x = x
-  applyN q f x = f $ applyN (q-1) f x
 
--- TODO carry Abs types along
--- TODO very wrong, see quicksheets
 curryConvertEmits :: Int -> Expr () -> Int -> Int -> State [(Type, Expr ())] (Expr ())
-curryConvertEmits n0 a m 2 = pure $ abs' $ abs' $ abs' $ curryConvertFinalDoom (anfToCps (evar 0) $ incVars 0 a) m
+curryConvertEmits n0 a m 2 = do
+  a' <- anfToCpsFull g h (evar 0) (incVars 0 a)
+  pure $ abs' $ abs' $ abs' $ curryConvertFinalDoom a' m
+  where
+    g 1 e = do
+      ne <- closureConvertEmit0 n0 e -- FUGG :D should call closureConvert
+      pure $ abs' $ abs' $ fnVal ne  -- ^
+    h e ee = (tupAccess 0 2 e `app` tupAccess 1 2 e) `app` ee
 curryConvertEmits n0 a m nargs | nargs < 1 = error "0 or negative number of args"
 curryConvertEmits n0 a m nargs | m == nargs = do
   e <- curryConvertEmits n0 a m (nargs-1)
@@ -69,7 +69,7 @@ curryConvertEmits n0 a m nargs = do
   pure $ abs' $ abs' $ abs' $ evar 0 `app` primOp Tup [fnVal m, primOp Tup [evar 1, evar 2]]
 
 curryConvert :: Int -> Expr () -> State [(Type, Expr ())] (Expr ())
-curryConvert n0 = f . absesTraverse where f (a,n) = curryConvertEmits n0 a n n
+curryConvert n0 = f . absesTraverse    where f (a,n) = curryConvertEmits n0 a n n
 
 runClosureConvert :: Code () -> Code ()
 runClosureConvert (Code l) = f $ flip runState [] $ mapM ((closureConvert (length l) >=> curryConvert (length l)) . snd) l where

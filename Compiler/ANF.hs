@@ -2,6 +2,7 @@ module Compiler.ANF where
 
 import Prelude hiding (abs)
 import Data.Tuple.Extra (second)
+import Data.Function.HT (nest)
 import Compiler.Types
 
 anf :: Expr () -> [Expr ()] -> (Expr () -> [Expr ()] -> Expr ()) -> Expr ()
@@ -34,7 +35,8 @@ anfTransportVals x = anfTransportVals' (length x) x
 runAnf :: Expr () -> Expr ()
 runAnf a = anf a [] (\a' [] -> a')
 
--- TODO descend into abses first
+-- TODO make it so app can be the final thing
 
 anfCode :: Code () -> Code ()
-anfCode (Code l) = Code $ second runAnf <$> l
+anfCode (Code l) = Code $ second f <$> l where
+  f x = nest n abs' $ runAnf x' where (x', n) = absesTraverse x
