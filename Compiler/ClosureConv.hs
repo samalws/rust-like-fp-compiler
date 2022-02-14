@@ -6,6 +6,7 @@ import Control.Monad.State (State, gets, modify, runState)
 import Data.List.Index (indexed)
 import Data.Set (toList)
 import Compiler.Types
+import Compiler.CPS
 
 closureConvertEmit0 :: Int -> Expr () -> State [(Type, Expr ())] Int
 closureConvertEmit0 n0 a = do
@@ -32,8 +33,9 @@ closureConvertEmit n0 a = do
 -- n0: current length of Code fns
 closureConvert :: Int -> Expr () -> State [(Type, Expr ())] (Expr ())
 closureConvert n0 (FnVal m ()) = pure $ primOp Tup [fnVal m, primInt 0] -- TODO replace 0 with () when void is made
-closureConvert n0 (App (App a b ()) r ()) = pure $ ((tupAccess 0 2 a `app` tupAccess 1 2 a) `app` b) `app` r -- assumes that a, b, and r are alredy clean
-closureConvert n0 (App _ _ ()) = error "closureConvert ran into a weird App"
+-- closureConvert n0 (App (App a b ()) r ()) = pure $ ((tupAccess 0 2 a `app` tupAccess 1 2 a) `app` b) `app` r -- assumes that a, b, and r are alredy clean
+-- closureConvert n0 (App _ _ ()) = error "closureConvert ran into a weird App"
+closureConvert n0 (App a b ()) = pure $ (tupAccess 0 2 a `app` tupAccess 1 2 a) `app` b -- assumes that a, and b are alredy clean
 closureConvert n0 (Abs t a ()) = do
   a' <- closureConvert n0 a
   (m,env) <- closureConvertEmit n0 $ abs t a'
@@ -41,21 +43,33 @@ closureConvert n0 (Abs t a ()) = do
 closureConvert n0 (Let a b ()) = let' <$> closureConvert n0 a <*> closureConvert n0 b
 closureConvert n0 a = pure a -- tupaccess, primop should contain only vars and ints anyway
 
-absesTraverse :: Expr a -> (Expr a, Int)
-absesTraverse (Abs _ a _) = (+1) <$> absesTraverse a
-absesTraverse a = (a, 0)
+-- gdi i really need to rename stuff
+curryConvertFinalDoom :: Expr () -> Int -> Expr ()
+curryConvertFinalDoom a 2 = a
+curryConvertFinalDoom a 3 = a
+curryConvertFinalDoom a 4 = replaceVars [(2, tupAccess 0 2 (evar 2)), (3, tupAccess 1 2 (evar 2))] a
+curryConvertFinalDoom a n = let' (snd' 2) $ applyN (n-5) (let' $ snd' 0) $ replaceVars ([(0, evar (n-4)), (1, evar (n-3)), (2, evar (n-2))] <> [(m, fst' (m-1)) | m <- [3..n-2]] <> [(n-1, snd' 0)]) a   where
+  fst' q = tupAccess 0 2 $ evar q
+  snd' q = tupAccess 1 2 $ evar q
+  applyN 0 f x = x
+  applyN q f x = f $ applyN (q-1) f x
 
 -- TODO carry Abs types along
-curryConvertEmits :: Int -> Expr () -> Int -> State [(Type, Expr ())] (Expr ())
-curryConvertEmits n0 a 1 = pure $ abs' a
-curryConvertEmits n0 a nargs | nargs < 1 = error "0 or negative number of args"
-curryConvertEmits n0 a nargs = do
-  e <- curryConvertEmits n0 a (nargs-1)
+-- TODO very wrong, see quicksheets
+curryConvertEmits :: Int -> Expr () -> Int -> Int -> State [(Type, Expr ())] (Expr ())
+curryConvertEmits n0 a m 2 = pure $ abs' $ abs' $ abs' $ curryConvertFinalDoom (anfToCps (evar 0) $ incVars 0 a) m
+curryConvertEmits n0 a m nargs | nargs < 1 = error "0 or negative number of args"
+curryConvertEmits n0 a m nargs | m == nargs = do
+  e <- curryConvertEmits n0 a m (nargs-1)
   m <- closureConvertEmit0 n0 e
-  pure $ abs' $ fnVal m `app` evar 0
+  pure $ abs' $ abs' $ abs' $ evar 0 `app` primOp Tup [fnVal m, evar 1]
+curryConvertEmits n0 a m nargs = do
+  e <- curryConvertEmits n0 a m (nargs-1)
+  m <- closureConvertEmit0 n0 e
+  pure $ abs' $ abs' $ abs' $ evar 0 `app` primOp Tup [fnVal m, primOp Tup [evar 1, evar 2]]
 
 curryConvert :: Int -> Expr () -> State [(Type, Expr ())] (Expr ())
-curryConvert n0 = uncurry (curryConvertEmits n0) . absesTraverse
+curryConvert n0 = f . absesTraverse where f (a,n) = curryConvertEmits n0 a n n
 
 runClosureConvert :: Code () -> Code ()
 runClosureConvert (Code l) = f $ flip runState [] $ mapM ((closureConvert (length l) >=> curryConvert (length l)) . snd) l where

@@ -34,5 +34,7 @@ anfTransportVals x = anfTransportVals' (length x) x
 runAnf :: Expr () -> Expr ()
 runAnf a = anf a [] (\a' [] -> a')
 
+-- TODO descend into abses first
+
 anfCode :: Code () -> Code ()
 anfCode (Code l) = Code $ second runAnf <$> l

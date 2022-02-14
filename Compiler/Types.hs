@@ -114,6 +114,10 @@ replaceFns m (TupAccess n mm x q) = TupAccess n mm (replaceFns m x) q
 replaceFns m (PrimOp o l q) = PrimOp o (replaceFns m <$> l) q
 replaceFns _ x = x
 
+absesTraverse :: Expr a -> (Expr a, Int)
+absesTraverse (Abs _ a _) = (+1) <$> absesTraverse a
+absesTraverse a = (a, 0)
+
 replaceType :: Int -> Type -> Type -> Type
 replaceType n t (TVar m) | m == n = t
 replaceType n t (Fn a b) = Fn (replaceType n t a) (replaceType n t b)
