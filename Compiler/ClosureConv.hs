@@ -54,9 +54,7 @@ curryConvertEmits n0 a m 2 = do
   a' <- anfToCpsFull g h (evar 0) (incVars 0 a)
   pure $ abs' $ abs' $ abs' $ curryConvertFinalDoom a' m
   where
-    g 1 e = do
-      ne <- closureConvertEmit0 n0 e -- FUGG :D should call closureConvert
-      pure $ abs' $ abs' $ fnVal ne  -- ^
+    g 1 e = closureConvert n0 $ abs' e
     h e ee = (tupAccess 0 2 e `app` tupAccess 1 2 e) `app` ee
 curryConvertEmits n0 a m nargs | nargs < 1 = error "0 or negative number of args"
 curryConvertEmits n0 a m nargs | m == nargs = do
