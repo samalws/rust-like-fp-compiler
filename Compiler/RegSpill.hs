@@ -18,3 +18,6 @@ regSpill r l@(Let (Abs t x ()) y ()) | size (freeVars x) >= r = doRegSpill r l -
 regSpill r l@(Let (Abs t x ()) y ()) = let' (abs t $ regSpill r x) $ regSpill r y -- TODO won't need this eventually
 regSpill r l@(Let x y ()) = let' x $ regSpill r y
 regSpill r x = x
+
+regSpillCode :: Register -> Code () -> Code ()
+regSpillCode r (Code fs) = Code $ descendAbses (const $ regSpill r) <$> fs

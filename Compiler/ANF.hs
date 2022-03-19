@@ -5,7 +5,8 @@ import Data.Tuple.Extra (second)
 import Compiler.Types
 
 anf :: Expr () -> [Expr ()] -> (Expr () -> [Expr ()] -> Expr ()) -> Expr ()
-anf (App a b ())    l r = anfTransportVals [a,b] l (\[a',b'] l' -> let' (app a' b')   (r (evar 0) (map (incVars 0) l')))
+-- anf (App a b ())    l r = anfTransportVals [a,b] l (\[a',b'] l' -> let' (app a' b')   (r (evar 0) (map (incVars 0) l')))
+anf (App (App a b ()) c ()) l r = anfTransportVals [a,b,c] l (\[a',b',c'] l' -> let' (app (app a' b') c') (r (evar 0) (map (incVars 0) l')))
 anf (PrimOp o x ()) l r = anfTransportVals x     l (\x'      l' -> let' (primOp o x') (r (evar 0) (map (incVars 0) l')))
 anf (Abs t a ()) l r = let'
                          (abs t (runAnf a))
