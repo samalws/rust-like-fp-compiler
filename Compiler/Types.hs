@@ -116,7 +116,7 @@ replaceFns m (PrimOp o l q) = PrimOp o (replaceFns m <$> l) q
 replaceFns _ x = x
 
 descendAbses'' :: (Functor f) => Int -> (Int -> Expr a -> f (Expr a)) -> Expr a -> f (Expr a)
-descendAbses'' n f (Abs t a q) = flip (Abs t) q <$> (descendAbses'' (n+1) f a)
+descendAbses'' n f (Abs t a q) = flip (Abs t) q <$> descendAbses'' (n+1) f a
 descendAbses'' n f x = f n x
 
 descendAbses' :: (Functor f) => (Int -> Expr a -> f (Expr a)) -> Expr a -> f (Expr a)

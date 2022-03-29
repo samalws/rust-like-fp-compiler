@@ -25,7 +25,7 @@ lambdaLiftExpr mintFn a@(Abs _ _ ()) = do
 lambdaLiftExpr mintFn (App a b ()) = app <$> lambdaLiftExpr mintFn a <*> lambdaLiftExpr mintFn b
 lambdaLiftExpr mintFn (Let a b ()) = let' <$> lambdaLiftExpr mintFn a <*> lambdaLiftExpr mintFn b
 lambdaLiftExpr mintFn (TupAccess n m a ()) = tupAccess n m <$> lambdaLiftExpr mintFn a
-lambdaLiftExpr mintFn (PrimOp op l ()) = primOp op <$> (sequence $ lambdaLiftExpr mintFn <$> l)
+lambdaLiftExpr mintFn (PrimOp op l ()) = primOp op <$> sequence (lambdaLiftExpr mintFn <$> l)
 lambdaLiftExpr mintFn a = pure a
 
 lambdaLiftFn :: (Monad m) => (Expr () -> m Int) -> Expr () -> m (Expr ())
