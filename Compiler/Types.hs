@@ -10,6 +10,7 @@ import Data.Maybe (maybe, isJust, fromJust, fromMaybe)
 import Data.Set (Set, singleton, empty)
 import qualified Data.Set as Set
 import Control.Monad.State (StateT, runStateT, gets, modify)
+import Data.Functor.Identity (Identity(..), runIdentity)
 
 data PrimOpEnum = Plus | Tup | IfZ   deriving (Show, Eq, Generic)
 data PrimTypeEnum = IntT   deriving (Show, Eq, Generic)
@@ -114,12 +115,15 @@ replaceFns m (TupAccess n mm x q) = TupAccess n mm (replaceFns m x) q
 replaceFns m (PrimOp o l q) = PrimOp o (replaceFns m <$> l) q
 replaceFns _ x = x
 
-descendAbses' :: Int -> (Int -> Expr a -> Expr a) -> Expr a -> Expr a
-descendAbses' n f (Abs t a q) = Abs t (descendAbses' (n+1) f a) q
-descendAbses' n f x = f n x
+descendAbses'' :: (Functor f) => Int -> (Int -> Expr a -> f (Expr a)) -> Expr a -> f (Expr a)
+descendAbses'' n f (Abs t a q) = flip (Abs t) q <$> (descendAbses'' (n+1) f a)
+descendAbses'' n f x = f n x
+
+descendAbses' :: (Functor f) => (Int -> Expr a -> f (Expr a)) -> Expr a -> f (Expr a)
+descendAbses' = descendAbses'' 0
 
 descendAbses :: (Int -> Expr a -> Expr a) -> Expr a -> Expr a
-descendAbses = descendAbses' 0
+descendAbses f = runIdentity . descendAbses' ((Identity .) . f)
 
 replaceType :: Int -> Type -> Type -> Type
 replaceType n t (TVar m) | m == n = t
