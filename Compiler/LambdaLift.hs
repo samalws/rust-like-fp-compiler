@@ -1,6 +1,6 @@
 {-# LANGUAGE TupleSections #-}
 
-module Compiler.ClosureConvert where
+module Compiler.LambdaLift where
 
 import Prelude hiding (abs)
 import Compiler.Types

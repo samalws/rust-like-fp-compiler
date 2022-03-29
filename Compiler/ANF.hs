@@ -35,4 +35,4 @@ runAnf :: Expr () -> Expr ()
 runAnf a = anf a [] (\a' [] -> a')
 
 anfCode :: Code () -> Code ()
-anfCode (Code l) = Code $ second runAnf <$> l
+anfCode (Code l) = Code $ second (descendAbses $ const runAnf) <$> l

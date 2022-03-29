@@ -1,7 +1,7 @@
 module Compiler.RegAlloc where
 
 import Prelude hiding (abs)
-import Data.Tuple.Extra (first)
+import Data.Tuple.Extra (first, second)
 import Data.Maybe (fromJust)
 import Compiler.Types
 
@@ -23,6 +23,13 @@ regAlloc m e = regAllocModifyMap m e <$ e
 
 runRegAlloc :: Expr () -> Expr RegMap
 runRegAlloc = regAlloc []
+
+regAllocFn :: Expr () -> Expr RegMap
+regAllocFn (Abs t e ()) = Abs t (regAllocFn e) []
+regAllocFn a = runRegAlloc a
+
+regAllocCode :: Code () -> Code RegMap
+regAllocCode (Code l) = Code $ second regAllocFn <$> l
 
 maxRegAlloced :: Expr RegMap -> Register
 maxRegAlloced = maximum . fmap (maximum . (-1:) . fmap snd)

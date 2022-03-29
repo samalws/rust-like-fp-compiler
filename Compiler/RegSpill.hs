@@ -2,6 +2,7 @@ module Compiler.RegSpill where
 
 import Prelude hiding (abs)
 import Data.Set (toList, size)
+import Data.Tuple.Extra (second)
 import Compiler.Types
 
 doRegSpill :: Int -> Expr () -> Expr ()
@@ -20,4 +21,4 @@ regSpill r l@(Let x y ()) = let' x $ regSpill r y
 regSpill r x = x
 
 regSpillCode :: Register -> Code () -> Code ()
-regSpillCode r (Code fs) = Code $ descendAbses (const $ regSpill r) <$> fs
+regSpillCode r (Code fs) = Code $ second (descendAbses (const $ regSpill r)) <$> fs
