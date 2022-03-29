@@ -21,7 +21,7 @@ lambdaLiftExpr mintFn a@(Abs _ _ ()) = do
   let a' = replaceVars mapping a
   a'' <- lambdaLiftFn mintFn $ abs' a'
   n <- mintFn a''
-  pure $ app (fnVal n) (primOp Tup $ evar <$> fv)
+  pure $ primOp Tup [fnVal n, primOp Tup $ evar <$> fv]
 lambdaLiftExpr mintFn (App a b ()) = app <$> lambdaLiftExpr mintFn a <*> lambdaLiftExpr mintFn b
 lambdaLiftExpr mintFn (Let a b ()) = let' <$> lambdaLiftExpr mintFn a <*> lambdaLiftExpr mintFn b
 lambdaLiftExpr mintFn (TupAccess n m a ()) = tupAccess n m <$> lambdaLiftExpr mintFn a
