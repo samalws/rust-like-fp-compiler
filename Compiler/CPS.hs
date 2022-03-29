@@ -17,7 +17,6 @@ import Data.Functor.Identity (Identity(..),runIdentity)
 -- TODO
 
 anfToCpsFull :: (Monad m) => (Int -> Expr () -> m (Expr ())) -> (Expr () -> Expr () -> Expr ()) -> Expr () -> Expr () -> m (Expr ())
--- TODO r might not need to be succed
 anfToCpsFull g h r (Let (App a b ()) c ()) = let' <$> (g 1 =<< anfToCpsFull g h (incVars 0 r) c) <*> pure ((incVars 0 a `app` incVars 0 b) `app` evar 0)
 anfToCpsFull g h r (Let (Abs _ a ()) c ()) = let' <$> (g 2 =<< anfToCpsFull g h (evar 0) (incVars 0 a)) <*> anfToCpsFull g h (incVars 0 r) c
 anfToCpsFull g h r (Let a c ()) = let' a <$> anfToCpsFull g h (incVars 0 r) c
