@@ -1,8 +1,8 @@
 module Compiler.RegAlloc where
 
 import Prelude hiding (abs)
-import Data.Map (Map)
 import Data.Tuple.Extra (first)
+import Data.Maybe (fromJust)
 import Compiler.Types
 
 type RegMap = [(Int, Register)]
@@ -26,3 +26,6 @@ runRegAlloc = regAlloc []
 
 maxRegAlloced :: Expr RegMap -> Register
 maxRegAlloced = maximum . fmap (maximum . (-1:) . fmap snd)
+
+lookupRegMap :: Int -> RegMap -> Register
+lookupRegMap n m = fromJust $ lookup n m
