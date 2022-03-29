@@ -1,4 +1,4 @@
 \x.
-let a = 5 in
+let a = 60 in
 let b = 5 in
 a + b

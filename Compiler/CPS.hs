@@ -32,6 +32,7 @@ anfToCps = (runIdentity .) . anfToCpsFull ((Identity .) . repeatN abs') app wher
 anfWrapCps :: Expr () -> Expr ()
 anfWrapCps = abs' . descendAbses (anfToCps . evar)
 
+-- format now: \x. \env. \r. expr
 cpsConvertCode :: Code () -> Code ()
 cpsConvertCode (Code l) = Code (l' <> newFns) where
   f (t,Abs ta (Abs te x ()) ()) = (t,) <$> (abs ta . abs te . abs' <$> anfToCpsFull g h (evar 0) (incVars 0 x))

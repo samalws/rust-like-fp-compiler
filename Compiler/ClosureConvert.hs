@@ -21,6 +21,7 @@ closureConvertExpr (PrimOp op l ()) = primOp op (closureConvertExpr <$> l)
 closureConvertExpr a = a
 
 closureConvertFn' :: (Monad m) => Int -> Int -> (Expr () -> m Int) -> Expr () -> m (Expr ())
+closureConvertFn' 0 1 _ v = pure v
 closureConvertFn' m n _ v | m == n+1 = pure newBody where
   applyAll [] v = v
   applyAll (h:t) v = applyAll t (h v)
