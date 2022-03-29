@@ -1,6 +1,7 @@
 { pkgs ? import <nixpkgs> {} }:
 pkgs.mkShell {
-  nativeBuildInputs = [
+  buildInputs = [
+    pkgs.nasm
     pkgs.hlint
     (pkgs.buildPackages.ghc.withPackages (p: with p; [
       transformers-either
