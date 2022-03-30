@@ -16,15 +16,16 @@ import Data.Functor.Identity (Identity(..),runIdentity)
 -- possible fix later might be to plug in let values with differing types *before* doing cps conversion
 -- TODO
 
-anfToCpsFull :: (Monad m) => (Int -> Expr () -> m (Expr ())) -> (Expr () -> Expr () -> Expr ()) -> Expr () -> Expr () -> m (Expr ())
-anfToCpsFull g h r (Let (App a b ()) c ()) = let' <$> (g 1 =<< anfToCpsFull g h (incVars 0 r) c) <*> pure ((incVars 0 a `app` incVars 0 b) `app` evar 0)
-anfToCpsFull g h r (Let (Abs _ a ()) c ()) = let' <$> (g 2 =<< anfToCpsFull g h (evar 0) (incVars 0 a)) <*> anfToCpsFull g h (incVars 0 r) c
+anfToCpsFull :: (Monad m) => (Int -> m (Expr ()) -> Expr () -> m (Expr ())) -> (Expr () -> Expr () -> Expr ()) -> Expr () -> Expr () -> m (Expr ())
+anfToCpsFull g h r (Let (App a b ()) c ()) = g 1 (pure ((incVars 0 a `app` incVars 0 b) `app` evar 0)) =<< anfToCpsFull g h (incVars 0 r) c
+anfToCpsFull g h r (Let (Abs _ a ()) c ()) = g 2 (anfToCpsFull g h (incVars 0 r) c) =<< anfToCpsFull g h (evar 0) (incVars 0 a)
 anfToCpsFull g h r (Let a c ()) = let' a <$> anfToCpsFull g h (incVars 0 r) c
 anfToCpsFull g h r (App a b ()) = pure $ (a `app` b) `app` r
 anfToCpsFull g h r a = pure $ h r a
 
 anfToCps :: Expr () -> Expr () -> Expr ()
-anfToCps = (runIdentity .) . anfToCpsFull ((Identity .) . repeatN abs') app where
+anfToCps = (runIdentity .) . anfToCpsFull g app where
+  g n c x = let' (repeatN abs' n x) <$> c
   repeatN f 0 x = x
   repeatN f n x = repeatN f (n-1) (f x)
 
@@ -40,13 +41,14 @@ cpsConvertCode (Code l) = Code (l' <> newFns) where
   mintFn e = do
     modify ((+1) *** (e:))
     gets fst
-  g 1 a = do
+  g 1 c a = do
     let fv = toList $ freeVars a
     let lfv = length fv
     let mapping = [(v, tupAccess n lfv (evar 0)) | (n, v) <- indexed fv]
     let a' = replaceVars ((0,evar 1):mapping) a
     n <- mintFn (abs' $ abs' a')
-    pure $ primOp Tup [fnVal n, primOp Tup $ evar <$> fv]
+    c' <- c
+    pure $ let' (primOp Tup $ evar <$> fv) $ let' (primOp Tup [fnVal n, evar 0]) $ incVars 1 c'
   h r a = (tupAccess 0 2 r `app` a) `app` tupAccess 1 2 r
   converted = sequence $ f <$> l
   (l', (_, newFunctionsRev)) = runState converted (length l - 1, [])
