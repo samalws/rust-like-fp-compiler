@@ -14,26 +14,28 @@ import Data.Set (toList)
 -- TODO kills type info in Abses and Code
 
 lambdaLiftExpr :: (Monad m) => (Expr () -> m Int) -> Expr () -> m (Expr ())
-lambdaLiftExpr mintFn a@(Abs _ _ ()) = do
-  let fv = toList $ freeVars a
+lambdaLiftExpr mintFn (Abs t a ()) = do
+  let fv = filter (/= 0) $ toList $ freeVars a
   let lfv = length fv
-  let mapping = [(v, tupAccess n lfv (evar 0)) | (n, v) <- indexed fv]
+  let mapping = (0,evar 1):[(v, tupAccess n lfv (evar 0)) | (n, v) <- indexed fv]
   let a' = replaceVars mapping a
-  a'' <- lambdaLiftFn mintFn $ abs' a'
+  a'' <- abs t . abs' <$> lambdaLiftExpr mintFn a'
   n <- mintFn a''
-  pure $ primOp Tup [fnVal n, primOp Tup $ evar <$> fv]
-lambdaLiftExpr mintFn (App a b ()) = app <$> lambdaLiftExpr mintFn a <*> lambdaLiftExpr mintFn b
+  pure $ primOp Tup [fnVal n, primOp Tup $ evar . (+1) <$> fv]
+lambdaLiftExpr mintFn (App a b ()) = do
+  ca <- lambdaLiftExpr mintFn a -- TODO bad that this gets repeated?
+  cb <- lambdaLiftExpr mintFn b
+  pure $ (tupAccess 0 2 ca `app` cb) `app` tupAccess 1 2 ca
 lambdaLiftExpr mintFn (Let a b ()) = let' <$> lambdaLiftExpr mintFn a <*> lambdaLiftExpr mintFn b
 lambdaLiftExpr mintFn (TupAccess n m a ()) = tupAccess n m <$> lambdaLiftExpr mintFn a
 lambdaLiftExpr mintFn (PrimOp op l ()) = primOp op <$> sequence (lambdaLiftExpr mintFn <$> l)
 lambdaLiftExpr mintFn a = pure a
 
 lambdaLiftFn :: (Monad m) => (Expr () -> m Int) -> Expr () -> m (Expr ())
-lambdaLiftFn mintFn = descendAbses' (const $ lambdaLiftExpr mintFn)
+lambdaLiftFn mintFn (Abs t a ()) = abs t . abs' <$> lambdaLiftExpr mintFn (incVars 0 a)
 
 lambdaLiftCode :: Code () -> Code ()
 lambdaLiftCode (Code l) = Code (l' <> newFns) where
-  -- TODO this is almost an exact copy of closureConvertCode, DRY smh
   mintFn :: Expr () -> State (Int, [Expr ()]) Int
   mintFn e = do -- NOTE: need to reverse the list at the end
     modify ((+1) *** (e:))

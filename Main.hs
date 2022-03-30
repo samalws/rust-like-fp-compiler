@@ -22,7 +22,27 @@ main = do
     Left e -> print e
     Right e -> do
       let c = Code [(PrimT IntT, e)]
-      print $ regAllocCode . regSpillCode 7 . cpsConvertCode . anfCode . closureConvertCode . addBlankAbses . lambdaLiftCode $ c
-      let c' = regSpillCode 7 . cpsConvertCode . anfCode . closureConvertCode . addBlankAbses . lambdaLiftCode $ c
+      print $ cpsConvertCode . anfCode . lambdaLiftCode . addBlankAbses $ c
+      let c' = regSpillCode 7 . cpsConvertCode . anfCode . lambdaLiftCode . addBlankAbses $ c
       let asm = codeToAsm . regAllocCode $ c'
       writeFile "otp.asm" asm
+
+
+
+
+{-
+      putStrLn "original code:"
+      print c
+      putStrLn "lambda lifted, blank functions given dummy arguments:"
+      print $ addBlankAbses . lambdaLiftCode $ c
+      putStrLn "closure converted:"
+      print $ closureConvertCode . addBlankAbses . lambdaLiftCode $ c
+      putStrLn "ANF:"
+      print $ anfCode . closureConvertCode . addBlankAbses . lambdaLiftCode $ c
+      putStrLn "CPS:"
+      print $ cpsConvertCode . anfCode . closureConvertCode . addBlankAbses . lambdaLiftCode $ c
+      putStrLn "register spilled:"
+      print $ regSpillCode 7 . cpsConvertCode . anfCode . closureConvertCode . addBlankAbses . lambdaLiftCode $ c
+      putStrLn "registers allocated:"
+      print $ regAllocCode . regSpillCode 7 . cpsConvertCode . anfCode . closureConvertCode . addBlankAbses . lambdaLiftCode $ c
+-}
