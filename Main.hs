@@ -6,7 +6,6 @@ import Compiler.BetaReduce
 import Compiler.HM
 import Compiler.LambdaLift
 import Compiler.AddBlankAbses
-import Compiler.ClosureConvert
 import Compiler.ANF
 import Compiler.CPS
 import Compiler.RegSpill
