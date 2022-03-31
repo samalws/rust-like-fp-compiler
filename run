@@ -1,1 +1,2 @@
 ghc Main.hs && ./Main && nasm -f elf64 otp.asm && ld -o otp otp.o && ./otp
+echo $?

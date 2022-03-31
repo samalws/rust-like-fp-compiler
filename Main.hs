@@ -21,7 +21,11 @@ main = do
     Left e -> print e
     Right e -> do
       let c = Code [(PrimT IntT, e)]
-      print $ cpsConvertCode . anfCode . lambdaLiftCode . addBlankAbses $ c
+      putStrLn $ printCode $ addBlankAbses $ c
+      putStrLn $ printCode $ lambdaLiftCode . addBlankAbses $ c
+      putStrLn $ printCode $ anfCode . lambdaLiftCode . addBlankAbses $ c
+      putStrLn $ printCode $ cpsConvertCode . anfCode . lambdaLiftCode . addBlankAbses $ c
+      putStrLn $ printCode $ regSpillCode 7 . cpsConvertCode . anfCode . lambdaLiftCode . addBlankAbses $ c
       let c' = regSpillCode 7 . cpsConvertCode . anfCode . lambdaLiftCode . addBlankAbses $ c
       let asm = codeToAsm . regAllocCode $ c'
       writeFile "otp.asm" asm

@@ -13,6 +13,9 @@ import Data.Set (toList)
 
 -- TODO kills type info in Abses and Code
 
+-- old fn format: \x. v
+-- new fn format: \x. \env. v
+
 lambdaLiftExpr :: (Monad m) => (Expr () -> m Int) -> Expr () -> m (Expr ())
 lambdaLiftExpr mintFn (Abs t a ()) = do
   let fv = filter (/= 0) $ toList $ freeVars a
@@ -21,7 +24,7 @@ lambdaLiftExpr mintFn (Abs t a ()) = do
   let a' = replaceVars mapping a
   a'' <- abs t . abs' <$> lambdaLiftExpr mintFn a'
   n <- mintFn a''
-  pure $ primOp Tup [fnVal n, primOp Tup $ evar . (+1) <$> fv]
+  pure $ primOp Tup [fnVal n, primOp Tup $ evar . (subtract 1) <$> fv]
 lambdaLiftExpr mintFn (App a b ()) = do
   ca <- lambdaLiftExpr mintFn a -- TODO bad that this gets repeated?
   cb <- lambdaLiftExpr mintFn b

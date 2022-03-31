@@ -17,10 +17,10 @@ import Data.Functor.Identity (Identity(..),runIdentity)
 -- TODO
 
 anfToCpsFull :: (Monad m) => (Int -> m (Expr ()) -> Expr () -> m (Expr ())) -> (Expr () -> Expr () -> Expr ()) -> Expr () -> Expr () -> m (Expr ())
-anfToCpsFull g h r (Let (App a b ()) c ()) = g 1 (pure ((incVars 0 a `app` incVars 0 b) `app` evar 0)) =<< anfToCpsFull g h (incVars 0 r) c
-anfToCpsFull g h r (Let (Abs _ a ()) c ()) = g 2 (anfToCpsFull g h (incVars 0 r) c) =<< anfToCpsFull g h (evar 0) (incVars 0 a)
+anfToCpsFull g h r (Let (App a b ()) c ()) = g 1 (pure ((incVars 0 a `app` incVars 0 b) `app` evar 0)) =<< anfToCpsFull g h r c -- TODO (incVars 0 r) c
+-- anfToCpsFull g h r (Let (Abs _ a ()) c ()) = g 2 (anfToCpsFull g h (incVars 0 r) c) =<< anfToCpsFull g h (evar 0) (incVars 0 a)    -- TODO maybe uncomment this, unreachable at the moment
 anfToCpsFull g h r (Let a c ()) = let' a <$> anfToCpsFull g h (incVars 0 r) c
-anfToCpsFull g h r (App a b ()) = pure $ (a `app` b) `app` r
+-- anfToCpsFull g h r (App a b ()) = pure $ (a `app` b) `app` r    -- TODO uncomment this, unreachable at the moment
 anfToCpsFull g h r a = pure $ h r a
 
 anfToCps :: Expr () -> Expr () -> Expr ()
@@ -42,7 +42,7 @@ cpsConvertCode (Code l) = Code (l' <> newFns) where
     modify ((+1) *** (e:))
     gets fst
   g 1 c a = do
-    let fv = toList $ freeVars a
+    let fv = filter (/= 0) $ toList $ freeVars a
     let lfv = length fv
     let mapping = [(v, tupAccess n lfv (evar 0)) | (n, v) <- indexed fv]
     let a' = replaceVars ((0,evar 1):mapping) a

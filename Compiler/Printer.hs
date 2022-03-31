@@ -3,6 +3,7 @@ module Compiler.Printer where
 import Prelude hiding (abs)
 import Control.Monad.State (State, gets, modify, evalState)
 import Compiler.Types
+import Data.List.Index (indexed)
 
 newPrinterVar :: State Int String
 newPrinterVar = modify (+ 1) >> gets (("v" <>) . show)
@@ -24,6 +25,10 @@ printExpr' env (PrimOp Tup l ()) = (\l' -> "(" <> f l' <> ")") <$> sequence (pri
   f [] = ""
   f [a] = a
   f (a:b:r) = a <> "," <> f (b:r)
+printExpr' env (FnVal n ()) = pure $ "f" <> show n -- TODO
 
 printExpr :: Expr () -> String
 printExpr e = evalState (printExpr' [] e) 0
+
+printCode :: Code () -> String
+printCode (Code l) = unlines ((\(i,(_,x)) -> "f" <> show i <> " = " <> printExpr x) <$> indexed l)

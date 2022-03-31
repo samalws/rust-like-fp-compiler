@@ -41,5 +41,8 @@ regAllocCode (Code l) = Code $ second regAllocFn <$> l
 maxRegAlloced :: Expr RegMap -> Register
 maxRegAlloced = maximum . fmap (maximum . (-1:) . fmap snd)
 
+lookupRegMapMaybe :: Int -> RegMap -> Maybe Register
+lookupRegMapMaybe = lookup
+
 lookupRegMap :: Int -> RegMap -> Register
-lookupRegMap n m = fromJust $ lookup n m
+lookupRegMap n m = fromJust $ lookupRegMapMaybe n m

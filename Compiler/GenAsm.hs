@@ -4,6 +4,7 @@ import Prelude hiding (abs)
 import Compiler.Types
 import Compiler.RegAlloc
 import Data.List.Index (indexed)
+import Data.Maybe (isNothing)
 
 asmWordSize :: Int
 asmWordSize = 8
@@ -37,6 +38,9 @@ letBodyToAsm dest (PrimOp Tup l _) = movAsm dest (regName stkPtrReg) <> concat (
 letBodyToAsm dest a = baseToAsm dest a
 
 fnBodyToAsm :: Expr RegMap -> [String]
+fnBodyToAsm (Let a b _) | isNothing (lookupRegMapMaybe 0 $ grabRegMap b) = fnBodyToAsm b where
+  grabRegMap (Let _ _ r) = r
+  grabRegMap (App _ _ r) = r -- TODO DRY
 fnBodyToAsm (Let a b _) = fnBodyToAsm b <> letBodyToAsm (regName $ lookupRegMap 0 $ grabRegMap b) a where
   grabRegMap (Let _ _ r) = r
   grabRegMap (App _ _ r) = r
@@ -58,5 +62,5 @@ fnToAsm a = fnBodyToAsm a
 codeToAsm :: Code RegMap -> String
 codeToAsm (Code l) = unlines $ concat $ [startSection] <> (f <$> indexed l) <> [endSection] where
   startSection = ["section .text","global _start","_start:"] <> movAsm (regName helperReg) "finish" <> ["push " <> regName helperReg, "push " <> regName helperReg] <> movAsm (regName 2) (regName stkPtrReg) -- first? push is a dummy push
-  endSection = ["finish:","mov rax, " <> regName 0,"mov [sneed], al","mov rax, 4","mov rbx, 1","mov rcx, sneed","mov rdx, 1","int 0x80","mov rax, 1","mov rbx, 0","int 0x80","section .data","sneed: db 0"]
+  endSection = ["finish:","mov rax, 1","mov rbx, " <> regName 0,"int 0x80"]
   f (i,(_,x)) = ("fn" <> show i <> ":") : reverse (fnToAsm x)
