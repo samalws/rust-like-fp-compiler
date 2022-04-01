@@ -1,4 +1,10 @@
 \q.
 let f = (\x. x) in
 let g = (\x. f x) in
-g 65
+let h = (\x. (f x) + (g x)) in
+let i = (\x. h x) in
+let j = (\x. i x) in
+let k = (\x. j x) in
+let l = (\x. k x) in
+let m = (\x. l x) in
+ifz 10 5 ((m 65) + (f 65))

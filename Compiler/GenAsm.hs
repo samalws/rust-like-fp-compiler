@@ -33,6 +33,7 @@ baseToAsm dest (FnVal n _) = movAsm dest ("fn" <> show n)
 
 letBodyToAsm :: String -> Expr RegMap -> [String]
 letBodyToAsm dest (PrimOp Plus [a,b] _) = ["add " <> dest <> ", " <> regName helperReg] <> baseToAsm (regName helperReg) a <> baseToAsm dest b
+letBodyToAsm dest (PrimOp IfZ [a,b,c] _) = ["cmovne " <> dest <> ", " <> regName helperReg] <> baseToAsm (regName helperReg) c <> baseToAsm dest b <> ["cmp " <> regName helperReg <> ", 0"] <> baseToAsm (regName helperReg) a
 letBodyToAsm dest (PrimOp Tup l _) = movAsm dest (regName stkPtrReg) <> concat (f <$> indexed l) <> ["sub " <> regName stkPtrReg <> ", " <> show (length l * asmWordSize)] where
   f (i,x) = movAsm (regName stkPtrReg <> "[" <> show (i*asmWordSize) <> "]") (regName helperReg) <> baseToAsm (regName helperReg) x
 letBodyToAsm dest a = baseToAsm dest a
